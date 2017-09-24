@@ -12,8 +12,11 @@
 
 static const NSString *kAuthenticationString = @"PortableEmotionAnalysis";
 static const NSString *kServerAddress = @"http://192.168.0.7:8080";
+static const NSString *kUploadPhotoButtonTitle = @"Upload Photo";
+static const NSString *kContinueNuttonTitle = @"Continue";
+static NSDictionary *kDlibLandmarksMap = nil;
 
-@interface ViewController () <AVCaptureVideoDataOutputSampleBufferDelegate> {
+@interface ViewController () <AVCaptureVideoDataOutputSampleBufferDelegate, UITextFieldDelegate> {
     AVCaptureSession *_session;
     CAShapeLayer *_shapeLayer;
     AVCaptureVideoPreviewLayer *_previewLayer;
@@ -26,6 +29,7 @@ static const NSString *kServerAddress = @"http://192.168.0.7:8080";
     
     CGSize _viewBoundsSize;
     BOOL _shouldStopToUpload;
+    NSString *_serverAddress;
 }
 
 @property (weak, nonatomic) IBOutlet UIButton *switchCameraButton;
@@ -38,7 +42,30 @@ static const NSString *kServerAddress = @"http://192.168.0.7:8080";
 - (void)viewDidLoad {
     [super viewDidLoad];
     
+    // disable locking screen
     [[UIApplication sharedApplication] setIdleTimerDisabled: YES];
+    
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Please input server address"
+                                                                   message:@""
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField * _Nonnull textField) {
+        textField.placeholder = @"Default 192.168.0.7:8080";
+        textField.delegate = self;
+        textField.textAlignment = NSTextAlignmentCenter;
+    }];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Confirm"
+                                              style:UIAlertActionStyleDestructive
+                                            handler:^(UIAlertAction * _Nonnull action) {
+                                                _serverAddress = [NSString stringWithFormat:@"http://%@", alert.textFields[0].text];
+                                            }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Use default address"
+                                              style:UIAlertActionStyleDefault
+                                            handler:^(UIAlertAction * _Nonnull action) {
+                                                _serverAddress = kServerAddress.copy;
+                                            }]];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self presentViewController:alert animated:YES completion:nil];;
+    });
     
     _faceDetection = [[VNDetectFaceRectanglesRequest alloc] init];
     _faceLandmarks = [[VNDetectFaceLandmarksRequest alloc] init];
@@ -66,6 +93,18 @@ static const NSString *kServerAddress = @"http://192.168.0.7:8080";
     [_uploadPhotoButton addTarget:self
                            action:@selector(tapUploadPhoto)
                  forControlEvents:UIControlEventTouchDown];
+    
+    kDlibLandmarksMap = @{
+                          @"faceContour" : [NSValue valueWithRange:NSMakeRange(0, 17)],
+                          @"leftEyebrow" : [NSValue valueWithRange:NSMakeRange(17, 5)],
+                          @"rightEyebrow": [NSValue valueWithRange:NSMakeRange(22, 5)],
+                          @"noseCrest"   : [NSValue valueWithRange:NSMakeRange(27, 4)],
+                          @"nose"        : [NSValue valueWithRange:NSMakeRange(31, 5)],
+                          @"leftEye"     : [NSValue valueWithRange:NSMakeRange(36, 6)],
+                          @"rightEye"    : [NSValue valueWithRange:NSMakeRange(42, 6)],
+                          @"outerLips"   : [NSValue valueWithRange:NSMakeRange(48,12)],
+                          @"innerLips"   : [NSValue valueWithRange:NSMakeRange(60, 8)],
+                          };
 }
 
 - (void)viewDidLayoutSubviews {
@@ -94,10 +133,9 @@ static const NSString *kServerAddress = @"http://192.168.0.7:8080";
 
 - (void)setupSession {
     _session = [[AVCaptureSession alloc] init];
-    AVCaptureDevice *defaultCamera = [AVCaptureDevice
-                                      defaultDeviceWithDeviceType:AVCaptureDeviceTypeBuiltInWideAngleCamera
-                                      mediaType:AVMediaTypeVideo
-                                      position:AVCaptureDevicePositionFront];
+    AVCaptureDevice *defaultCamera = [AVCaptureDevice defaultDeviceWithDeviceType:AVCaptureDeviceTypeBuiltInWideAngleCamera
+                                                                        mediaType:AVMediaTypeVideo
+                                                                         position:AVCaptureDevicePositionFront];
     
     @try {
         [_session beginConfiguration];
@@ -136,7 +174,7 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
     
     if (_shouldStopToUpload) {
         _shouldStopToUpload = NO;
-        [_session stopRunning];
+        [self sessionPauseRunning];
         
         // should convert CIImage to CGImage, and then to UIImage
         // otherwise UIImageJPEGRepresentation() will return nil
@@ -179,10 +217,10 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
         NSArray<VNFaceLandmarkRegion2D *> *requiredLandmarks = @[landmarks.faceContour,
                                                                  landmarks.leftEyebrow,
                                                                  landmarks.rightEyebrow,
+                                                                 landmarks.noseCrest,
+                                                                 landmarks.nose,
                                                                  landmarks.leftEye,
                                                                  landmarks.rightEye,
-                                                                 landmarks.nose,
-                                                                 landmarks.noseCrest,
                                                                  landmarks.outerLips,
                                                                  landmarks.innerLips];
         
@@ -196,7 +234,8 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
     }];
 }
 
-- (CGRect)scaleRect:(CGRect)rect toSize:(CGSize)size {
+- (CGRect)scaleRect:(const CGRect)rect
+             toSize:(const CGSize)size {
     return CGRectMake(rect.origin.x * size.width,
                       rect.origin.y * size.height,
                       rect.size.width * size.width,
@@ -214,26 +253,7 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
                                                             + boundingBox.origin.y)];
     }
     
-    [self drawLineFromPoints:points];
-}
-
-- (void)drawLineFromPoints:(NSArray<NSValue *> *)points {
-    CAShapeLayer *newLayer = [[CAShapeLayer alloc] init];
-    newLayer.strokeColor = UIColor.redColor.CGColor;
-    newLayer.lineWidth = 2.0f;
-    newLayer.fillColor = UIColor.clearColor.CGColor;
-    
-    UIBezierPath *path = [[UIBezierPath alloc] init];
-    [path moveToPoint:points[0].CGPointValue];
-    
-    [points enumerateObjectsUsingBlock:^(NSValue * _Nonnull point, NSUInteger idx, BOOL * _Nonnull stop) {
-        [path addLineToPoint:point.CGPointValue];
-    }];
-    newLayer.path = path.CGPath;
-    
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [_shapeLayer addSublayer:newLayer];
-    });
+    [self drawLineFromPoints:points inRange:NSMakeRange(0, pointCount) withColor:UIColor.redColor.CGColor];
 }
 
 - (void)tapSwitchCamera {
@@ -257,7 +277,7 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
     }
 }
 
-- (AVCaptureDevice *)cameraWithPreviousPosition:(AVCaptureDevicePosition)previousPosition {
+- (AVCaptureDevice *)cameraWithPreviousPosition:(const AVCaptureDevicePosition)previousPosition {
     switch (previousPosition) {
         case AVCaptureDevicePositionFront:
         case AVCaptureDevicePositionBack:
@@ -274,6 +294,38 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
     _shouldStopToUpload = YES;
 }
 
+- (void)sessionPauseRunning {
+    [_session stopRunning];
+    
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [_uploadPhotoButton removeTarget:self
+                                  action:nil
+                        forControlEvents:UIControlEventTouchDown];
+        [_uploadPhotoButton addTarget:self
+                               action:@selector(tapContinue)
+                     forControlEvents:UIControlEventTouchDown];
+        [_uploadPhotoButton setTitle:kContinueNuttonTitle.copy forState:UIControlStateNormal];
+    });
+}
+
+- (void)tapContinue {
+    [self sessionContinueRunning];
+}
+
+- (void)sessionContinueRunning {
+    [_session startRunning];
+    
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [_uploadPhotoButton removeTarget:self
+                                  action:nil
+                        forControlEvents:UIControlEventTouchDown];
+        [_uploadPhotoButton addTarget:self
+                               action:@selector(tapUploadPhoto)
+                     forControlEvents:UIControlEventTouchDown];
+        [_uploadPhotoButton setTitle:kUploadPhotoButtonTitle.copy forState:UIControlStateNormal];
+    });
+}
+
 - (void)uploadImage:(UIImage *)image {
     // NSData *data = [[NSData alloc]initWithBase64EncodedString:string options:NSDataBase64DecodingIgnoreUnknownCharacters];
     NSString *imageString = [UIImageJPEGRepresentation(image, 1.0) base64EncodedStringWithOptions:NSDataBase64EncodingEndLineWithLineFeed];
@@ -286,7 +338,7 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
     NSString *dataLength = [NSString stringWithFormat:@"%ld", jsonData.length];
     
     NSMutableURLRequest *request =
-    [NSMutableURLRequest requestWithURL:[NSURL URLWithString:(NSString *)kServerAddress]
+    [NSMutableURLRequest requestWithURL:[NSURL URLWithString:_serverAddress]
                             cachePolicy:NSURLRequestReloadIgnoringCacheData
                         timeoutInterval:60];
     
@@ -295,7 +347,7 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
     [request addValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
     [request addValue:@"application/json" forHTTPHeaderField:@"Accept"];
     [request setValue:dataLength forHTTPHeaderField:@"Content-Length"];
-    [request setValue:(NSString *)kAuthenticationString forHTTPHeaderField:@"Authentication"];
+    [request setValue:kAuthenticationString.copy forHTTPHeaderField:@"Authentication"];
     
     NSURLSession *urlSession = [NSURLSession sharedSession];
     NSURLSessionTask *task =
@@ -307,14 +359,73 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
                         if (error) NSLog(@"Failed in uploading: %@", error.localizedDescription);
                         else {
                             NSError *error;
-                            NSDictionary *responseDict = [NSJSONSerialization JSONObjectWithData:data options:kNilOptions error:&error];
+                            NSDictionary *responseDict = [NSJSONSerialization JSONObjectWithData:data
+                                                                                         options:kNilOptions
+                                                                                           error:&error];
                             if (error) NSLog(@"Failed converting JSON to dictionary: %@", error.localizedDescription);
-                            NSLog(@"%@", responseDict);
                             
-                            [_session startRunning];
+                            if (responseDict[@"landmarks"]) {
+                                NSArray *landmarks = responseDict[@"landmarks"];
+                                if (landmarks.class == NSNull.class) {
+                                    UIAlertController *alert =
+                                    [UIAlertController alertControllerWithTitle:@"Server found no face"
+                                                                        message:@""
+                                                                 preferredStyle:UIAlertControllerStyleAlert];
+                                    [alert addAction:[UIAlertAction actionWithTitle:@"OK"
+                                                                              style:UIAlertActionStyleCancel
+                                                                            handler:nil]];
+                                    dispatch_async(dispatch_get_main_queue(), ^{
+                                        [self presentViewController:alert animated:YES completion:nil];;
+                                    });
+                                } else {
+                                    CGFloat scaleWidth = _viewBoundsSize.width / image.size.height;
+                                    CGFloat scaleHeight = _viewBoundsSize.height / image.size.width;
+                                    
+                                    for (NSArray<NSArray<NSNumber *> *> *face in landmarks) {
+                                        if (face.count == 68) {
+                                            NSMutableArray *points = [[NSMutableArray alloc] initWithCapacity:68];
+                                            for (NSUInteger idx = 0; idx < 68; ++idx) {
+                                                points[idx] = [NSValue valueWithCGPoint:
+                                                               CGPointMake(face[idx][0].floatValue * scaleWidth, 
+                                                                           _viewBoundsSize.height - face[idx][1].floatValue * scaleHeight)];
+                                            }
+                                            [kDlibLandmarksMap enumerateKeysAndObjectsUsingBlock:^(NSString * _Nonnull landmarkName,
+                                                                                                   NSValue * _Nonnull range,
+                                                                                                   BOOL * _Nonnull stop) {
+                                                [self drawLineFromPoints:points
+                                                                 inRange:[range rangeValue]
+                                                               withColor:UIColor.blueColor.CGColor];
+                                            }];
+                                        } else {
+                                            NSLog(@"Less than 68 points returned by server");
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }];
     [task resume];
+}
+
+- (void)drawLineFromPoints:(const NSArray<NSValue *> *)points
+                   inRange:(const NSRange)range
+                 withColor:(const CGColorRef)color {
+    CAShapeLayer *newLayer = [[CAShapeLayer alloc] init];
+    newLayer.strokeColor = color;
+    newLayer.lineWidth = 2.0f;
+    newLayer.fillColor = UIColor.clearColor.CGColor;
+    
+    UIBezierPath *path = [[UIBezierPath alloc] init];
+    [path moveToPoint:points[range.location].CGPointValue];
+    
+    for (NSUInteger idx = range.location; idx < NSMaxRange(range); ++idx) {
+        [path addLineToPoint:points[idx].CGPointValue];
+    }
+    newLayer.path = path.CGPath;
+    
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [_shapeLayer addSublayer:newLayer];
+    });
 }
 
 @end
