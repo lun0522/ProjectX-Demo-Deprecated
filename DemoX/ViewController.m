@@ -10,21 +10,26 @@
 #import <Vision/Vision.h>
 #import "ViewController.h"
 
+static const NSString *kAuthenticationString = @"PortableEmotionAnalysis";
+static const NSString *kServerAddress = @"http://192.168.0.7:8080";
+
 @interface ViewController () <AVCaptureVideoDataOutputSampleBufferDelegate> {
-    AVCaptureSession *session;
-    CAShapeLayer *shapeLayer;
-    AVCaptureVideoPreviewLayer *previewLayer;
+    AVCaptureSession *_session;
+    CAShapeLayer *_shapeLayer;
+    AVCaptureVideoPreviewLayer *_previewLayer;
+    AVCaptureDevicePosition _currentCameraPosition;
     
-    VNDetectFaceRectanglesRequest *faceDetection;
-    VNDetectFaceLandmarksRequest  *faceLandmarks;
-    VNSequenceRequestHandler *faceDetectionRequest;
-    VNSequenceRequestHandler *faceLandmarksRequest;
+    VNDetectFaceRectanglesRequest *_faceDetection;
+    VNDetectFaceLandmarksRequest  *_faceLandmarks;
+    VNSequenceRequestHandler *_faceDetectionRequest;
+    VNSequenceRequestHandler *_faceLandmarksRequest;
     
-    CGSize viewBoundsSize;
-    AVCaptureDevicePosition currentCameraPosition;
+    CGSize _viewBoundsSize;
+    BOOL _shouldStopToUpload;
 }
 
 @property (weak, nonatomic) IBOutlet UIButton *switchCameraButton;
+@property (weak, nonatomic) IBOutlet UIButton *uploadPhotoButton;
 
 @end
 
@@ -35,42 +40,51 @@
     
     [[UIApplication sharedApplication] setIdleTimerDisabled: YES];
     
-    faceDetection = [[VNDetectFaceRectanglesRequest alloc] init];
-    faceLandmarks = [[VNDetectFaceLandmarksRequest alloc] init];
-    faceDetectionRequest = [[VNSequenceRequestHandler alloc] init];
-    faceLandmarksRequest = [[VNSequenceRequestHandler alloc] init];
+    _faceDetection = [[VNDetectFaceRectanglesRequest alloc] init];
+    _faceLandmarks = [[VNDetectFaceLandmarksRequest alloc] init];
+    _faceDetectionRequest = [[VNSequenceRequestHandler alloc] init];
+    _faceLandmarksRequest = [[VNSequenceRequestHandler alloc] init];
     
     [self setupSession];
-    shapeLayer = [[CAShapeLayer alloc] init];
-    previewLayer = [AVCaptureVideoPreviewLayer layerWithSession:session];
-    previewLayer.videoGravity = kCAGravityResizeAspectFill;
+    _shapeLayer = [[CAShapeLayer alloc] init];
+    _previewLayer = [AVCaptureVideoPreviewLayer layerWithSession:_session];
+    _previewLayer.videoGravity = kCAGravityResizeAspectFill;
     
-    viewBoundsSize = self.view.bounds.size;
+    _viewBoundsSize = self.view.bounds.size;
+    _shouldStopToUpload = NO;
+    
     _switchCameraButton.layer.cornerRadius = 8.0f;
     _switchCameraButton.layer.borderWidth = 1.0f;
     _switchCameraButton.layer.borderColor = _switchCameraButton.tintColor.CGColor;
     [_switchCameraButton addTarget:self
-                            action:@selector(switchCamera)
+                            action:@selector(tapSwitchCamera)
                   forControlEvents:UIControlEventTouchDown];
+    
+    _uploadPhotoButton.layer.cornerRadius = 8.0f;
+    _uploadPhotoButton.layer.borderWidth = 1.0f;
+    _uploadPhotoButton.layer.borderColor = _uploadPhotoButton.tintColor.CGColor;
+    [_uploadPhotoButton addTarget:self
+                           action:@selector(tapUploadPhoto)
+                 forControlEvents:UIControlEventTouchDown];
 }
 
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
     
-    shapeLayer.frame = self.view.frame;
-    previewLayer.frame = self.view.frame;
+    _shapeLayer.frame = self.view.frame;
+    _previewLayer.frame = self.view.frame;
 }
 
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
     
-    [self.view.layer insertSublayer:previewLayer atIndex:0];
+    [self.view.layer insertSublayer:_previewLayer atIndex:0];
     
-    shapeLayer.strokeColor = UIColor.redColor.CGColor;
-    shapeLayer.lineWidth = 2.0f;
-    [shapeLayer setAffineTransform:CGAffineTransformMakeScale(-1, -1)];
+    _shapeLayer.strokeColor = UIColor.redColor.CGColor;
+    _shapeLayer.lineWidth = 2.0f;
+    [_shapeLayer setAffineTransform:CGAffineTransformMakeScale(-1, -1)];
     
-    [self.view.layer insertSublayer:shapeLayer above:previewLayer];
+    [self.view.layer insertSublayer:_shapeLayer above:_previewLayer];
 }
 
 - (void)didReceiveMemoryWarning {
@@ -79,31 +93,31 @@
 }
 
 - (void)setupSession {
-    session = [[AVCaptureSession alloc] init];
+    _session = [[AVCaptureSession alloc] init];
     AVCaptureDevice *defaultCamera = [AVCaptureDevice
                                       defaultDeviceWithDeviceType:AVCaptureDeviceTypeBuiltInWideAngleCamera
                                       mediaType:AVMediaTypeVideo
                                       position:AVCaptureDevicePositionFront];
     
     @try {
-        [session beginConfiguration];
+        [_session beginConfiguration];
         
         NSError *error;
         AVCaptureDeviceInput *deviceInput = [AVCaptureDeviceInput deviceInputWithDevice:defaultCamera
                                                                                   error:&error];
         if (error) NSLog(@"Cannot init device input: %@", error.localizedDescription);
-        currentCameraPosition = AVCaptureDevicePositionFront;
-        if ([session canAddInput:deviceInput]) [session addInput:deviceInput];
+        _currentCameraPosition = AVCaptureDevicePositionFront;
+        if ([_session canAddInput:deviceInput]) [_session addInput:deviceInput];
         
         AVCaptureVideoDataOutput *videoOutput = [[AVCaptureVideoDataOutput alloc] init];
         videoOutput.videoSettings = @{(__bridge NSString *)kCVPixelBufferPixelFormatTypeKey: @(kCVPixelFormatType_420YpCbCr8BiPlanarFullRange)};
         videoOutput.alwaysDiscardsLateVideoFrames = YES;
         [videoOutput setSampleBufferDelegate:self
                                        queue:dispatch_queue_create("com.lun.demox.videooutput.queue", NULL)];
-        if ([session canAddOutput:videoOutput]) [session addOutput:videoOutput];
+        if ([_session canAddOutput:videoOutput]) [_session addOutput:videoOutput];
         
-        [session commitConfiguration];
-        [session startRunning];
+        [_session commitConfiguration];
+        [_session startRunning];
     }
     @catch (NSException *exception) {
         NSLog(@"Session setup failed!");
@@ -118,36 +132,48 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
     
     CIImage *ciImage = [CIImage imageWithCVImageBuffer:pixelBuffer
                                                options:(__bridge NSDictionary *)attachments];
-    if (currentCameraPosition == AVCaptureDevicePositionBack) ciImage = [ciImage imageByApplyingOrientation:UIImageOrientationUpMirrored];
+    if (_currentCameraPosition == AVCaptureDevicePositionBack) ciImage = [ciImage imageByApplyingOrientation:UIImageOrientationUpMirrored];
+    
+    if (_shouldStopToUpload) {
+        _shouldStopToUpload = NO;
+        [_session stopRunning];
+        
+        // should convert CIImage to CGImage, and then to UIImage
+        // otherwise UIImageJPEGRepresentation() will return nil
+        CIContext *context = [[CIContext alloc] initWithOptions:nil];
+        CGImageRef cgImage = [context createCGImage:ciImage fromRect:ciImage.extent];
+        [self uploadImage:[UIImage imageWithCGImage:cgImage]];
+    }
+    
     [self detectFaceInCIImage:[ciImage imageByApplyingOrientation:UIImageOrientationLeftMirrored]];
 }
 
 - (void)detectFaceInCIImage:(CIImage *)image {
     NSError *error;
-    [faceDetectionRequest performRequests:@[faceDetection] onCIImage:image error:&error];
+    [_faceDetectionRequest performRequests:@[_faceDetection] onCIImage:image error:&error];
     if (error) NSLog(@"Error in face detection: %@", error.localizedDescription);
     
-    NSArray *results = faceDetection.results;
+    NSArray *results = _faceDetection.results;
     if (results.count) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            for (CAShapeLayer *layer in [shapeLayer.sublayers copy]) [layer removeFromSuperlayer];
+            for (CAShapeLayer *layer in [_shapeLayer.sublayers copy]) [layer removeFromSuperlayer];
         });
-        faceLandmarks.inputFaceObservations = results;
+        _faceLandmarks.inputFaceObservations = results;
         [self detectLandmarksInCIImage:image];
     }
 }
 
 - (void)detectLandmarksInCIImage:(CIImage *)image {
     NSError *error;
-    [faceLandmarksRequest performRequests:@[faceLandmarks] onCIImage:image error:&error];
+    [_faceLandmarksRequest performRequests:@[_faceLandmarks] onCIImage:image error:&error];
     if (error) NSLog(@"Error in landmarks detection: %@", error.localizedDescription);
     
-    NSArray<VNFaceObservation *> *results = faceLandmarks.results;
+    NSArray<VNFaceObservation *> *results = _faceLandmarks.results;
     [results enumerateObjectsUsingBlock:^(VNFaceObservation * _Nonnull face,
                                           NSUInteger idx,
                                           BOOL * _Nonnull stop) {
-        CGRect boundingBox = ((VNFaceObservation *)faceLandmarks.inputFaceObservations[idx]).boundingBox;
-        CGRect faceBoundingBox = [self scaleRect:boundingBox ToSize:viewBoundsSize];
+        CGRect boundingBox = ((VNFaceObservation *)_faceLandmarks.inputFaceObservations[idx]).boundingBox;
+        CGRect faceBoundingBox = [self scaleRect:boundingBox toSize:_viewBoundsSize];
         
         VNFaceLandmarks2D *landmarks = face.landmarks;
         NSArray<VNFaceLandmarkRegion2D *> *requiredLandmarks = @[landmarks.faceContour,
@@ -170,7 +196,7 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
     }];
 }
 
-- (CGRect)scaleRect:(CGRect)rect ToSize:(CGSize)size {
+- (CGRect)scaleRect:(CGRect)rect toSize:(CGSize)size {
     return CGRectMake(rect.origin.x * size.width,
                       rect.origin.y * size.height,
                       rect.size.width * size.width,
@@ -188,10 +214,10 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
                                                             + boundingBox.origin.y)];
     }
     
-    [self drawPoints:points];
+    [self drawLineFromPoints:points];
 }
 
-- (void)drawPoints:(NSArray<NSValue *> *)points {
+- (void)drawLineFromPoints:(NSArray<NSValue *> *)points {
     CAShapeLayer *newLayer = [[CAShapeLayer alloc] init];
     newLayer.strokeColor = UIColor.redColor.CGColor;
     newLayer.lineWidth = 2.0f;
@@ -206,26 +232,26 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
     newLayer.path = path.CGPath;
     
     dispatch_async(dispatch_get_main_queue(), ^{
-        [shapeLayer addSublayer:newLayer];
+        [_shapeLayer addSublayer:newLayer];
     });
 }
 
-- (void)switchCamera {
-    if (session) {
-        [session beginConfiguration];
+- (void)tapSwitchCamera {
+    if (_session) {
+        [_session beginConfiguration];
         
-        AVCaptureInput *currentInput = session.inputs[0];
+        AVCaptureInput *currentInput = _session.inputs[0];
         AVCaptureDevice *newCamera = [self cameraWithPreviousPosition:((AVCaptureDeviceInput *)currentInput).device.position];
         
-        [session removeInput:currentInput];
+        [_session removeInput:currentInput];
         NSError *error;
         AVCaptureDeviceInput *newInput = [[AVCaptureDeviceInput alloc] initWithDevice:newCamera
                                                                                    error:&error];
         if (error) NSLog(@"Cannot init device input: %@", error.localizedDescription);
-        currentCameraPosition = newCamera.position;
-        if ([session canAddInput:newInput]) [session addInput:newInput];
+        _currentCameraPosition = newCamera.position;
+        if ([_session canAddInput:newInput]) [_session addInput:newInput];
         
-        [session commitConfiguration];
+        [_session commitConfiguration];
     } else {
         NSLog(@"No session!");
     }
@@ -240,8 +266,55 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
                                                        position:previousPosition == AVCaptureDevicePositionFront? AVCaptureDevicePositionBack: AVCaptureDevicePositionFront];
         default:
             NSLog(@"Previous position of camera not specified!");
-            return NULL;
+            return nil;
     }
+}
+
+- (void)tapUploadPhoto {
+    _shouldStopToUpload = YES;
+}
+
+- (void)uploadImage:(UIImage *)image {
+    // NSData *data = [[NSData alloc]initWithBase64EncodedString:string options:NSDataBase64DecodingIgnoreUnknownCharacters];
+    NSString *imageString = [UIImageJPEGRepresentation(image, 1.0) base64EncodedStringWithOptions:NSDataBase64EncodingEndLineWithLineFeed];
+    NSDictionary *requestDict = @{@"image": imageString};
+    NSError *error;
+    NSData* jsonData = [NSJSONSerialization dataWithJSONObject:requestDict
+                                                       options:kNilOptions
+                                                         error:&error];
+    if (error) NSLog(@"Failed converting dictionary to JSON: %@", error.localizedDescription);
+    NSString *dataLength = [NSString stringWithFormat:@"%ld", jsonData.length];
+    
+    NSMutableURLRequest *request =
+    [NSMutableURLRequest requestWithURL:[NSURL URLWithString:(NSString *)kServerAddress]
+                            cachePolicy:NSURLRequestReloadIgnoringCacheData
+                        timeoutInterval:60];
+    
+    [request setHTTPMethod:@"POST"];
+    [request setHTTPBody:jsonData];
+    [request addValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+    [request addValue:@"application/json" forHTTPHeaderField:@"Accept"];
+    [request setValue:dataLength forHTTPHeaderField:@"Content-Length"];
+    [request setValue:(NSString *)kAuthenticationString forHTTPHeaderField:@"Authentication"];
+    
+    NSURLSession *urlSession = [NSURLSession sharedSession];
+    NSURLSessionTask *task =
+    [urlSession uploadTaskWithRequest:request
+                             fromData:jsonData
+                    completionHandler:^(NSData * _Nullable data,
+                                        NSURLResponse * _Nullable response,
+                                        NSError * _Nullable error) {
+                        if (error) NSLog(@"Failed in uploading: %@", error.localizedDescription);
+                        else {
+                            NSError *error;
+                            NSDictionary *responseDict = [NSJSONSerialization JSONObjectWithData:data options:kNilOptions error:&error];
+                            if (error) NSLog(@"Failed converting JSON to dictionary: %@", error.localizedDescription);
+                            NSLog(@"%@", responseDict);
+                            
+                            [_session startRunning];
+                        }
+                    }];
+    [task resume];
 }
 
 @end
