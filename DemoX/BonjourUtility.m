@@ -14,7 +14,7 @@ static const NSString *kServerDomain = @"local.";
 
 @interface BonjourUtility () <NSNetServiceBrowserDelegate, NSNetServiceDelegate> {
     NSNetServiceBrowser *_netServiceBrowser;
-    NSNetService *_netServiceResolver;
+    NSMutableArray *_netServiceResolverList;
     DMXSearchServerCompletionHandler _completionHandler;
     BOOL _isSearching;
 }
@@ -25,6 +25,7 @@ static const NSString *kServerDomain = @"local.";
 
 - (instancetype)init {
     if (self = [super init]) {
+        _netServiceResolverList = [[NSMutableArray alloc] init];
         _isSearching = NO;
     }
     return self;
@@ -35,8 +36,8 @@ static const NSString *kServerDomain = @"local.";
         _isSearching = YES;
         _netServiceBrowser = [[NSNetServiceBrowser alloc] init];
         [_netServiceBrowser setDelegate:self];
-        [_netServiceBrowser searchForServicesOfType:@"_demox._tcp."
-                                           inDomain:@"local."];
+        [_netServiceBrowser searchForServicesOfType:kServerType.copy
+                                           inDomain:kServerDomain.copy];
         _completionHandler = completionHandler;
         NSLog(@"Start browsing for Bonjour services");
     }
@@ -45,7 +46,9 @@ static const NSString *kServerDomain = @"local.";
 - (void)allCleanup {
     _isSearching = NO;
     [self browserCleanup];
-    [self resolverCleanup];
+    for (NSNetService *netServiceResolver in _netServiceResolverList)
+        [self resolverCleanup:netServiceResolver];
+    [_netServiceResolverList removeAllObjects];
     _completionHandler = nil;
 }
 
@@ -54,13 +57,14 @@ static const NSString *kServerDomain = @"local.";
 - (void)netServiceBrowser:(NSNetServiceBrowser *)browser
            didFindService:(NSNetService *)service
                moreComing:(BOOL)moreComing {
-    _netServiceResolver = service;
-    [_netServiceResolver setDelegate:self];
-    [_netServiceResolver resolveWithTimeout:10.0];
+    [_netServiceResolverList addObject:service];
+    [service setDelegate:self];
+    [service resolveWithTimeout:10.0];
 }
 
 - (void)netServiceBrowser:(NSNetServiceBrowser *)browser
              didNotSearch:(NSDictionary<NSString *,NSNumber *> *)errorDict {
+    [self allCleanup];
     NSLog(@"Error in browsing for Bonjour services: %@", errorDict);
 }
 
@@ -83,22 +87,31 @@ static const NSString *kServerDomain = @"local.";
                     NSLog(@"Address: %@", [[NSString alloc] initWithData:(NSData *)txtRecord[@"Address"] encoding:NSUTF8StringEncoding]);
                     _completionHandler();
                     [self allCleanup];
+                    return;
                 }
-                else NSLog(@"Authenticated, but no address found");
+                else NSLog(@"Authenticated, but no address found: %@", service);
             }
+            else NSLog(@"Identified, but not authenticated: %@", service);
         }
+        else NSLog(@"No identity: %@", service);
     }
+    else NSLog(@"No TXT record: %@", service);
+    
+    if ([_netServiceResolverList containsObject:service])
+        [_netServiceResolverList removeObject:service];
 }
 
 - (void)netService:(NSNetService *)service
      didNotResolve:(NSDictionary *)errorDict {
-    NSLog(@"Error in resolving Bonjour service: %@", errorDict);
+    if ([_netServiceResolverList containsObject:service])
+        [_netServiceResolverList removeObject:service];
+    NSLog(@"Error in resolving Bonjour service %@: %@", service, errorDict);
 }
 
-- (void)resolverCleanup {
-    if (_netServiceResolver) {
-        [_netServiceResolver stop];
-        [_netServiceResolver setDelegate:nil];
+- (void)resolverCleanup:(NSNetService *)netServiceResolver {
+    if (netServiceResolver) {
+        [netServiceResolver stop];
+        [netServiceResolver setDelegate:nil];
     }
 }
 

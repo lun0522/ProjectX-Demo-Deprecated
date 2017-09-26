@@ -44,14 +44,10 @@ static NSDictionary *kDlibLandmarksMap = nil;
 - (void)viewDidLoad {
     [super viewDidLoad];
     
-    _multicast = [[BonjourUtility alloc] init];
-    [_multicast searchServerWithCompletionHandler:^{
-        NSLog(@"Completion block executed");
-    }];
-    
     // disable locking screen
     [[UIApplication sharedApplication] setIdleTimerDisabled: YES];
     
+    _multicast = [[BonjourUtility alloc] init];
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Please input server address"
                                                                    message:@""
                                                             preferredStyle:UIAlertControllerStyleAlert];
@@ -69,6 +65,16 @@ static NSDictionary *kDlibLandmarksMap = nil;
                                               style:UIAlertActionStyleDefault
                                             handler:^(UIAlertAction * _Nonnull action) {
                                                 _serverAddress = kServerAddress.copy;
+                                            }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Search in LAN"
+                                              style:UIAlertActionStyleDefault
+                                            handler:^(UIAlertAction * _Nonnull action) {
+                                                [_multicast searchServerWithCompletionHandler:^{
+                                                    NSLog(@"Completion block executed");
+                                                    [_multicast searchServerWithCompletionHandler:^{
+                                                        NSLog(@"second finished");
+                                                    }];
+                                                }];
                                             }]];
     dispatch_async(dispatch_get_main_queue(), ^{
         [self presentViewController:alert animated:YES completion:nil];;
