@@ -8,6 +8,7 @@
 
 #import <AVFoundation/AVFoundation.h>
 #import <Vision/Vision.h>
+#import "BonjourUtility.h"
 #import "ViewController.h"
 
 static const NSString *kAuthenticationString = @"PortableEmotionAnalysis";
@@ -30,6 +31,7 @@ static NSDictionary *kDlibLandmarksMap = nil;
     CGSize _viewBoundsSize;
     BOOL _shouldStopToUpload;
     NSString *_serverAddress;
+    BonjourUtility *_multicast;
 }
 
 @property (weak, nonatomic) IBOutlet UIButton *switchCameraButton;
@@ -41,6 +43,11 @@ static NSDictionary *kDlibLandmarksMap = nil;
 
 - (void)viewDidLoad {
     [super viewDidLoad];
+    
+    _multicast = [[BonjourUtility alloc] init];
+    [_multicast searchServerWithCompletionHandler:^{
+        NSLog(@"Completion block executed");
+    }];
     
     // disable locking screen
     [[UIApplication sharedApplication] setIdleTimerDisabled: YES];
