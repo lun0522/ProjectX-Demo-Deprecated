@@ -17,6 +17,10 @@
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
     // Override point for customization after application launch.
+    
+    // disable locking screen
+    [application setIdleTimerDisabled: YES];
+    
     return YES;
 }
 

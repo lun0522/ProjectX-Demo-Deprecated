@@ -12,9 +12,9 @@
 #import "ViewController.h"
 
 static const NSString *kAuthenticationString = @"PortableEmotionAnalysis";
-static const NSString *kServerAddress = @"http://192.168.0.7:8080";
+static const NSString *kDefaultServerAddress = @"http://192.168.0.7:8080";
 static const NSString *kUploadPhotoButtonTitle = @"Upload Photo";
-static const NSString *kContinueNuttonTitle = @"Continue";
+static const NSString *kContinueButtonTitle = @"Continue";
 static NSDictionary *kDlibLandmarksMap = nil;
 
 @interface ViewController () <AVCaptureVideoDataOutputSampleBufferDelegate, UITextFieldDelegate> {
@@ -44,12 +44,9 @@ static NSDictionary *kDlibLandmarksMap = nil;
 - (void)viewDidLoad {
     [super viewDidLoad];
     
-    // disable locking screen
-    [[UIApplication sharedApplication] setIdleTimerDisabled: YES];
-    
     _multicast = [[BonjourUtility alloc] init];
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Please input server address"
-                                                                   message:@""
+                                                                   message:nil
                                                             preferredStyle:UIAlertControllerStyleAlert];
     [alert addTextFieldWithConfigurationHandler:^(UITextField * _Nonnull textField) {
         textField.placeholder = @"Default 192.168.0.7:8080";
@@ -64,16 +61,14 @@ static NSDictionary *kDlibLandmarksMap = nil;
     [alert addAction:[UIAlertAction actionWithTitle:@"Use default address"
                                               style:UIAlertActionStyleDefault
                                             handler:^(UIAlertAction * _Nonnull action) {
-                                                _serverAddress = kServerAddress.copy;
+                                                _serverAddress = kDefaultServerAddress.copy;
                                             }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Search in LAN"
                                               style:UIAlertActionStyleDefault
                                             handler:^(UIAlertAction * _Nonnull action) {
-                                                [_multicast searchServerWithCompletionHandler:^{
-                                                    NSLog(@"Completion block executed");
-                                                    [_multicast searchServerWithCompletionHandler:^{
-                                                        NSLog(@"second finished");
-                                                    }];
+                                                [_multicast searchServerWithCompletionHandler:^(NSString *address) {
+                                                    _serverAddress = address;
+                                                    NSLog(@"Use server address %@", _serverAddress);
                                                 }];
                                             }]];
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -311,13 +306,9 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
     [_session stopRunning];
     
     dispatch_async(dispatch_get_main_queue(), ^{
-        [_uploadPhotoButton removeTarget:self
-                                  action:nil
-                        forControlEvents:UIControlEventTouchDown];
-        [_uploadPhotoButton addTarget:self
-                               action:@selector(tapContinue)
-                     forControlEvents:UIControlEventTouchDown];
-        [_uploadPhotoButton setTitle:kContinueNuttonTitle.copy forState:UIControlStateNormal];
+        [self setButton:_uploadPhotoButton
+              withTitle:kContinueButtonTitle.copy
+              newTarget:@selector(tapContinue)];
     });
 }
 
@@ -329,17 +320,33 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
     [_session startRunning];
     
     dispatch_async(dispatch_get_main_queue(), ^{
-        [_uploadPhotoButton removeTarget:self
-                                  action:nil
-                        forControlEvents:UIControlEventTouchDown];
-        [_uploadPhotoButton addTarget:self
-                               action:@selector(tapUploadPhoto)
-                     forControlEvents:UIControlEventTouchDown];
-        [_uploadPhotoButton setTitle:kUploadPhotoButtonTitle.copy forState:UIControlStateNormal];
+        [self setButton:_uploadPhotoButton
+              withTitle:kUploadPhotoButtonTitle.copy
+              newTarget:@selector(tapUploadPhoto)];
     });
 }
 
+- (void)setButton:(UIButton *)button
+        withTitle:(NSString *)title
+        newTarget:(SEL)sel {
+    [button setTitle:title forState:UIControlStateNormal];
+    [button removeTarget:self action:nil forControlEvents:UIControlEventTouchDown];
+    [button addTarget:self action:sel forControlEvents:UIControlEventTouchDown];
+}
+
 - (void)uploadImage:(UIImage *)image {
+    if (!_serverAddress) {
+        UIAlertController *alert =
+        [UIAlertController alertControllerWithTitle:@"Error"
+                                            message:@"No server found!"
+                                     preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:@"OK"
+                                                  style:UIAlertActionStyleCancel
+                                                handler:nil]];
+        [self presentViewController:alert animated:YES completion:nil];
+        return;
+    }
+    
     // NSData *data = [[NSData alloc]initWithBase64EncodedString:string options:NSDataBase64DecodingIgnoreUnknownCharacters];
     NSString *imageString = [UIImageJPEGRepresentation(image, 1.0) base64EncodedStringWithOptions:NSDataBase64EncodingEndLineWithLineFeed];
     NSDictionary *requestDict = @{@"image": imageString};
@@ -382,7 +389,7 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
                                 if (landmarks.class == NSNull.class) {
                                     UIAlertController *alert =
                                     [UIAlertController alertControllerWithTitle:@"Server found no face"
-                                                                        message:@""
+                                                                        message:nil
                                                                  preferredStyle:UIAlertControllerStyleAlert];
                                     [alert addAction:[UIAlertAction actionWithTitle:@"OK"
                                                                               style:UIAlertActionStyleCancel

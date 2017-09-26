@@ -8,7 +8,7 @@
 
 #import <Foundation/Foundation.h>
 
-typedef void (^DMXSearchServerCompletionHandler)(void);
+typedef void (^DMXSearchServerCompletionHandler)(NSString *address);
 
 @interface BonjourUtility : NSObject
 

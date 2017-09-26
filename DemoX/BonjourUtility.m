@@ -84,8 +84,7 @@ static const NSString *kServerDomain = @"local.";
         if (txtRecord[@"Identity"]) {
             if ([[[NSString alloc] initWithData:(NSData *)txtRecord[@"Identity"] encoding:NSUTF8StringEncoding] isEqualToString:kServerIdentityString.copy]) {
                 if (txtRecord[@"Address"]) {
-                    NSLog(@"Address: %@", [[NSString alloc] initWithData:(NSData *)txtRecord[@"Address"] encoding:NSUTF8StringEncoding]);
-                    _completionHandler();
+                    _completionHandler([[NSString alloc] initWithData:(NSData *)txtRecord[@"Address"] encoding:NSUTF8StringEncoding]);
                     [self allCleanup];
                     return;
                 }
