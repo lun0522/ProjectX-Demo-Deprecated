@@ -8,11 +8,10 @@
 
 #import <AVFoundation/AVFoundation.h>
 #import <Vision/Vision.h>
-#import "BonjourUtility.h"
+#import "PEAServer.h"
 #import "ViewController.h"
 
-static const NSString *kAuthenticationString = @"PortableEmotionAnalysis";
-static const NSString *kDefaultServerAddress = @"http://192.168.0.7:8080";
+static const NSString *kDefaultServerAddress = @"192.168.0.7:8080";
 static const NSString *kUploadPhotoButtonTitle = @"Upload Photo";
 static const NSString *kContinueButtonTitle = @"Continue";
 static NSDictionary *kDlibLandmarksMap = nil;
@@ -30,8 +29,7 @@ static NSDictionary *kDlibLandmarksMap = nil;
     
     CGSize _viewBoundsSize;
     BOOL _shouldStopToUpload;
-    NSString *_serverAddress;
-    BonjourUtility *_multicast;
+    PEAServer *_server;
 }
 
 @property (weak, nonatomic) IBOutlet UIButton *switchCameraButton;
@@ -44,32 +42,28 @@ static NSDictionary *kDlibLandmarksMap = nil;
 - (void)viewDidLoad {
     [super viewDidLoad];
     
-    _multicast = [[BonjourUtility alloc] init];
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Please input server address"
                                                                    message:nil
                                                             preferredStyle:UIAlertControllerStyleAlert];
     [alert addTextFieldWithConfigurationHandler:^(UITextField * _Nonnull textField) {
-        textField.placeholder = @"Default 192.168.0.7:8080";
+        textField.placeholder = [NSString stringWithFormat:@"Default %@", kDefaultServerAddress.copy];
         textField.delegate = self;
         textField.textAlignment = NSTextAlignmentCenter;
     }];
     [alert addAction:[UIAlertAction actionWithTitle:@"Confirm"
                                               style:UIAlertActionStyleDestructive
                                             handler:^(UIAlertAction * _Nonnull action) {
-                                                _serverAddress = [NSString stringWithFormat:@"http://%@", alert.textFields[0].text];
+                                                _server = [PEAServer serverWithAddress:[NSString stringWithFormat:@"http://%@", alert.textFields[0].text]];
                                             }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Use default address"
                                               style:UIAlertActionStyleDefault
                                             handler:^(UIAlertAction * _Nonnull action) {
-                                                _serverAddress = kDefaultServerAddress.copy;
+                                                _server = [PEAServer serverWithAddress:[NSString stringWithFormat:@"http://%@", kDefaultServerAddress.copy]];
                                             }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Search in LAN"
                                               style:UIAlertActionStyleDefault
                                             handler:^(UIAlertAction * _Nonnull action) {
-                                                [_multicast searchServerWithCompletionHandler:^(NSString *address) {
-                                                    _serverAddress = address;
-                                                    NSLog(@"Use server address %@", _serverAddress);
-                                                }];
+                                                _server = [PEAServer serverWithAddress:nil];
                                             }]];
     dispatch_async(dispatch_get_main_queue(), ^{
         [self presentViewController:alert animated:YES completion:nil];;
@@ -335,96 +329,46 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
 }
 
 - (void)uploadImage:(UIImage *)image {
-    if (!_serverAddress) {
-        UIAlertController *alert =
-        [UIAlertController alertControllerWithTitle:@"Error"
-                                            message:@"No server found!"
-                                     preferredStyle:UIAlertControllerStyleAlert];
-        [alert addAction:[UIAlertAction actionWithTitle:@"OK"
-                                                  style:UIAlertActionStyleCancel
-                                                handler:nil]];
-        [self presentViewController:alert animated:YES completion:nil];
-        return;
-    }
-    
-    // NSData *data = [[NSData alloc]initWithBase64EncodedString:string options:NSDataBase64DecodingIgnoreUnknownCharacters];
     NSString *imageString = [UIImageJPEGRepresentation(image, 1.0) base64EncodedStringWithOptions:NSDataBase64EncodingEndLineWithLineFeed];
     NSDictionary *requestDict = @{@"image": imageString};
-    NSError *error;
-    NSData* jsonData = [NSJSONSerialization dataWithJSONObject:requestDict
-                                                       options:kNilOptions
-                                                         error:&error];
-    if (error) NSLog(@"Failed converting dictionary to JSON: %@", error.localizedDescription);
-    NSString *dataLength = [NSString stringWithFormat:@"%ld", jsonData.length];
     
-    NSMutableURLRequest *request =
-    [NSMutableURLRequest requestWithURL:[NSURL URLWithString:_serverAddress]
-                            cachePolicy:NSURLRequestReloadIgnoringCacheData
-                        timeoutInterval:60];
-    
-    [request setHTTPMethod:@"POST"];
-    [request setHTTPBody:jsonData];
-    [request addValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
-    [request addValue:@"application/json" forHTTPHeaderField:@"Accept"];
-    [request setValue:dataLength forHTTPHeaderField:@"Content-Length"];
-    [request setValue:kAuthenticationString.copy forHTTPHeaderField:@"Authentication"];
-    
-    NSURLSession *urlSession = [NSURLSession sharedSession];
-    NSURLSessionTask *task =
-    [urlSession uploadTaskWithRequest:request
-                             fromData:jsonData
-                    completionHandler:^(NSData * _Nullable data,
-                                        NSURLResponse * _Nullable response,
-                                        NSError * _Nullable error) {
-                        if (error) NSLog(@"Failed in uploading: %@", error.localizedDescription);
-                        else {
-                            NSError *error;
-                            NSDictionary *responseDict = [NSJSONSerialization JSONObjectWithData:data
-                                                                                         options:kNilOptions
-                                                                                           error:&error];
-                            if (error) NSLog(@"Failed converting JSON to dictionary: %@", error.localizedDescription);
-                            
-                            if (responseDict[@"landmarks"]) {
-                                NSArray *landmarks = responseDict[@"landmarks"];
-                                if (landmarks.class == NSNull.class) {
-                                    UIAlertController *alert =
-                                    [UIAlertController alertControllerWithTitle:@"Server found no face"
-                                                                        message:nil
-                                                                 preferredStyle:UIAlertControllerStyleAlert];
-                                    [alert addAction:[UIAlertAction actionWithTitle:@"OK"
-                                                                              style:UIAlertActionStyleCancel
-                                                                            handler:nil]];
-                                    dispatch_async(dispatch_get_main_queue(), ^{
-                                        [self presentViewController:alert animated:YES completion:nil];;
-                                    });
-                                } else {
-                                    CGFloat scaleWidth = _viewBoundsSize.width / image.size.height;
-                                    CGFloat scaleHeight = _viewBoundsSize.height / image.size.width;
-                                    
-                                    for (NSArray<NSArray<NSNumber *> *> *face in landmarks) {
-                                        if (face.count == 68) {
-                                            NSMutableArray *points = [[NSMutableArray alloc] initWithCapacity:68];
-                                            for (NSUInteger idx = 0; idx < 68; ++idx) {
-                                                points[idx] = [NSValue valueWithCGPoint:
-                                                               CGPointMake(face[idx][0].floatValue * scaleWidth, 
-                                                                           _viewBoundsSize.height - face[idx][1].floatValue * scaleHeight)];
-                                            }
-                                            [kDlibLandmarksMap enumerateKeysAndObjectsUsingBlock:^(NSString * _Nonnull landmarkName,
-                                                                                                   NSValue * _Nonnull range,
-                                                                                                   BOOL * _Nonnull stop) {
-                                                [self drawLineFromPoints:points
-                                                                 inRange:[range rangeValue]
-                                                               withColor:UIColor.blueColor.CGColor];
-                                            }];
-                                        } else {
-                                            NSLog(@"Less than 68 points returned by server");
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }];
-    [task resume];
+    [_server sendRequest:requestDict
+         responseHandler:^(NSDictionary * _Nullable responseDict) {
+             if (responseDict[@"error"]) {
+                 [self presentError:responseDict[@"error"]];
+             } else {
+                 if (responseDict[@"landmarks"]) {
+                     NSArray *landmarks = responseDict[@"landmarks"];
+                     if (landmarks.class == NSNull.class) {
+                         [self presentError:@"Server found no face"];
+                     } else {
+                         CGFloat scaleWidth = _viewBoundsSize.width / image.size.height;
+                         CGFloat scaleHeight = _viewBoundsSize.height / image.size.width;
+                         
+                         for (NSArray<NSArray<NSNumber *> *> *face in landmarks) {
+                             if (face.count == 68) {
+                                 NSMutableArray *points = [[NSMutableArray alloc] initWithCapacity:68];
+                                 for (NSUInteger idx = 0; idx < 68; ++idx) {
+                                     points[idx] = [NSValue valueWithCGPoint:
+                                                    CGPointMake(face[idx][0].floatValue * scaleWidth,
+                                                                _viewBoundsSize.height - face[idx][1].floatValue * scaleHeight)];
+                                 }
+                                 [kDlibLandmarksMap enumerateKeysAndObjectsUsingBlock:
+                                  ^(NSString * _Nonnull landmarkName,
+                                    NSValue * _Nonnull range,
+                                    BOOL * _Nonnull stop) {
+                                      [self drawLineFromPoints:points
+                                                       inRange:[range rangeValue]
+                                                     withColor:UIColor.blueColor.CGColor];
+                                  }];
+                             } else {
+                                 NSLog(@"Less than 68 points returned by server");
+                             }
+                         }
+                     }
+                 }
+             }
+         }];
 }
 
 - (void)drawLineFromPoints:(const NSArray<NSValue *> *)points
@@ -446,6 +390,16 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
     dispatch_async(dispatch_get_main_queue(), ^{
         [_shapeLayer addSublayer:newLayer];
     });
+}
+
+- (void)presentError:(NSString *)description {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Error"
+                                                                   message:description
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"OK"
+                                              style:UIAlertActionStyleCancel
+                                            handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
 }
 
 @end

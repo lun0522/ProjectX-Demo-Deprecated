@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		BD10577F1F79E771003DF7D7 /* BonjourUtility.m in Sources */ = {isa = PBXBuildFile; fileRef = BD10577D1F79E770003DF7D7 /* BonjourUtility.m */; };
+		BD10577F1F79E771003DF7D7 /* PEAServer.m in Sources */ = {isa = PBXBuildFile; fileRef = BD10577D1F79E770003DF7D7 /* PEAServer.m */; };
 		BD492DCF1F72BCF4001612FE /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = BD492DCE1F72BCF4001612FE /* AppDelegate.m */; };
 		BD492DD51F72BCF4001612FE /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = BD492DD31F72BCF4001612FE /* Main.storyboard */; };
 		BD492DD71F72BCF4001612FE /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BD492DD61F72BCF4001612FE /* Assets.xcassets */; };
@@ -36,8 +36,8 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		BD10577D1F79E770003DF7D7 /* BonjourUtility.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = BonjourUtility.m; sourceTree = "<group>"; };
-		BD10577E1F79E770003DF7D7 /* BonjourUtility.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BonjourUtility.h; sourceTree = "<group>"; };
+		BD10577D1F79E770003DF7D7 /* PEAServer.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PEAServer.m; sourceTree = "<group>"; };
+		BD10577E1F79E770003DF7D7 /* PEAServer.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PEAServer.h; sourceTree = "<group>"; };
 		BD492DCA1F72BCF4001612FE /* DemoX.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DemoX.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BD492DCD1F72BCF4001612FE /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
 		BD492DCE1F72BCF4001612FE /* AppDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppDelegate.m; sourceTree = "<group>"; };
@@ -108,8 +108,8 @@
 				BD492DCE1F72BCF4001612FE /* AppDelegate.m */,
 				BD492DFF1F72BD08001612FE /* ViewController.h */,
 				BD492E001F72BD08001612FE /* ViewController.m */,
-				BD10577E1F79E770003DF7D7 /* BonjourUtility.h */,
-				BD10577D1F79E770003DF7D7 /* BonjourUtility.m */,
+				BD10577E1F79E770003DF7D7 /* PEAServer.h */,
+				BD10577D1F79E770003DF7D7 /* PEAServer.m */,
 				BD492DD31F72BCF4001612FE /* Main.storyboard */,
 				BD492DD61F72BCF4001612FE /* Assets.xcassets */,
 				BD492DD81F72BCF4001612FE /* LaunchScreen.storyboard */,
@@ -270,7 +270,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				BD10577F1F79E771003DF7D7 /* BonjourUtility.m in Sources */,
+				BD10577F1F79E771003DF7D7 /* PEAServer.m in Sources */,
 				BD492E011F72BD08001612FE /* ViewController.m in Sources */,
 				BD492DDD1F72BCF4001612FE /* main.m in Sources */,
 				BD492DCF1F72BCF4001612FE /* AppDelegate.m in Sources */,
