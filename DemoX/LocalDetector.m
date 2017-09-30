@@ -81,23 +81,26 @@
         CGRect faceBoundingBox = [self scaleRect:boundingBox toSize:_frameSize];
         
         VNFaceLandmarks2D *landmarks = face.landmarks;
-        NSArray<VNFaceLandmarkRegion2D *> *requestedLandmarks = @[landmarks.faceContour,
-                                                                  landmarks.leftEyebrow,
-                                                                  landmarks.rightEyebrow,
-                                                                  landmarks.noseCrest,
-                                                                  landmarks.nose,
-                                                                  landmarks.leftEye,
-                                                                  landmarks.rightEye,
-                                                                  landmarks.outerLips,
-                                                                  landmarks.innerLips];
-        
-        for (VNFaceLandmarkRegion2D *landmarkRegion in requestedLandmarks) {
+        NSDictionary *requestedLandmarks = @{
+                                             @"faceContour" : landmarks.faceContour,
+                                             @"leftEyebrow" : landmarks.leftEyebrow,
+                                             @"rightEyebrow": landmarks.rightEyebrow,
+                                             @"noseCrest"   : landmarks.noseCrest,
+                                             @"nose"        : landmarks.nose,
+                                             @"leftEye"     : landmarks.leftEye,
+                                             @"rightEye"    : landmarks.rightEye,
+                                             @"outerLips"   : landmarks.outerLips,
+                                             @"innerLips"   : landmarks.innerLips,
+                                             };
+        [requestedLandmarks enumerateKeysAndObjectsUsingBlock:^(NSString *  _Nonnull landmarkName,
+                                                                VNFaceLandmarkRegion2D *  _Nonnull landmarkRegion,
+                                                                BOOL * _Nonnull stop) {
             if (landmarkRegion.pointCount) {
                 [self convertLandmarkPoints:landmarkRegion.normalizedPoints
                              withPointCount:landmarkRegion.pointCount
                        forFaceInBoundingBox:faceBoundingBox];
             }
-        }
+        }];
     }];
 }
 

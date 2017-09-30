@@ -12,6 +12,7 @@ static const NSString *kServerIdentityString = @"PEAServer";
 static const NSString *kServerType = @"_demox._tcp.";
 static const NSString *kServerDomain = @"local.";
 static const NSString *kClientAuthenticationString = @"PortableEmotionAnalysis";
+static NSDictionary *kDlibLandmarksMap = nil;
 
 @interface PEAServer () <NSNetServiceBrowserDelegate, NSNetServiceDelegate> {
     NSNetServiceBrowser *_netServiceBrowser;
@@ -25,6 +26,17 @@ static const NSString *kClientAuthenticationString = @"PortableEmotionAnalysis";
 
 - (instancetype)initWithAddress:(NSString *)address {
     if (self = [super init]) {
+        kDlibLandmarksMap = @{
+                              @"faceContour" : [NSValue valueWithRange:NSMakeRange(0, 17)],
+                              @"leftEyebrow" : [NSValue valueWithRange:NSMakeRange(17, 5)],
+                              @"rightEyebrow": [NSValue valueWithRange:NSMakeRange(22, 5)],
+                              @"noseCrest"   : [NSValue valueWithRange:NSMakeRange(27, 4)],
+                              @"nose"        : [NSValue valueWithRange:NSMakeRange(31, 5)],
+                              @"leftEye"     : [NSValue valueWithRange:NSMakeRange(36, 6)],
+                              @"rightEye"    : [NSValue valueWithRange:NSMakeRange(42, 6)],
+                              @"outerLips"   : [NSValue valueWithRange:NSMakeRange(48,12)],
+                              @"innerLips"   : [NSValue valueWithRange:NSMakeRange(60, 8)],
+                              };
         if (address) {
             _serverAddress = address;
             [self serverLog:[NSString stringWithFormat:@"Use address: %@", _serverAddress]];
@@ -37,6 +49,10 @@ static const NSString *kClientAuthenticationString = @"PortableEmotionAnalysis";
 
 + (PEAServer * _Nonnull)serverWithAddress:(NSString * _Nullable)address {
     return [[PEAServer alloc] initWithAddress:address];
+}
+
+- (NSDictionary * _Nonnull)getLandmarksMap {
+    return kDlibLandmarksMap.copy;
 }
 
 - (void)serverLog:(NSString *)content {

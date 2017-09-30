@@ -15,7 +15,6 @@
 static const NSString *kDefaultServerAddress = @"192.168.0.7:8080";
 static const NSString *kUploadPhotoButtonTitle = @"Upload Photo";
 static const NSString *kContinueButtonTitle = @"Continue";
-static NSDictionary *kDlibLandmarksMap = nil;
 
 @interface ViewController () <AVCaptureVideoDataOutputSampleBufferDelegate, UITextFieldDelegate> {
     AVCaptureSession *_session;
@@ -26,6 +25,7 @@ static NSDictionary *kDlibLandmarksMap = nil;
     BOOL _shouldStopToUpload;
     LocalDetector *_detector;
     PEAServer *_server;
+    NSDictionary *_serverLandmarksMap;
     CGSize _viewBoundsSize;
 }
 
@@ -51,16 +51,19 @@ static NSDictionary *kDlibLandmarksMap = nil;
                                               style:UIAlertActionStyleDestructive
                                             handler:^(UIAlertAction * _Nonnull action) {
                                                 _server = [PEAServer serverWithAddress:[NSString stringWithFormat:@"http://%@", alert.textFields[0].text]];
+                                                _serverLandmarksMap = [_server getLandmarksMap];
                                             }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Use default address"
                                               style:UIAlertActionStyleDefault
                                             handler:^(UIAlertAction * _Nonnull action) {
                                                 _server = [PEAServer serverWithAddress:[NSString stringWithFormat:@"http://%@", kDefaultServerAddress.copy]];
+                                                _serverLandmarksMap = [_server getLandmarksMap];
                                             }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Search in LAN"
                                               style:UIAlertActionStyleDefault
                                             handler:^(UIAlertAction * _Nonnull action) {
                                                 _server = [PEAServer serverWithAddress:nil];
+                                                _serverLandmarksMap = [_server getLandmarksMap];
                                             }]];
     dispatch_async(dispatch_get_main_queue(), ^{
         [self presentViewController:alert animated:YES completion:nil];
@@ -88,18 +91,6 @@ static NSDictionary *kDlibLandmarksMap = nil;
     [_uploadPhotoButton addTarget:self
                            action:@selector(tapUploadPhoto)
                  forControlEvents:UIControlEventTouchDown];
-    
-    kDlibLandmarksMap = @{
-                          @"faceContour" : [NSValue valueWithRange:NSMakeRange(0, 17)],
-                          @"leftEyebrow" : [NSValue valueWithRange:NSMakeRange(17, 5)],
-                          @"rightEyebrow": [NSValue valueWithRange:NSMakeRange(22, 5)],
-                          @"noseCrest"   : [NSValue valueWithRange:NSMakeRange(27, 4)],
-                          @"nose"        : [NSValue valueWithRange:NSMakeRange(31, 5)],
-                          @"leftEye"     : [NSValue valueWithRange:NSMakeRange(36, 6)],
-                          @"rightEye"    : [NSValue valueWithRange:NSMakeRange(42, 6)],
-                          @"outerLips"   : [NSValue valueWithRange:NSMakeRange(48,12)],
-                          @"innerLips"   : [NSValue valueWithRange:NSMakeRange(60, 8)],
-                          };
 }
 
 - (void)viewDidLayoutSubviews {
@@ -138,7 +129,8 @@ static NSDictionary *kDlibLandmarksMap = nil;
         NSError *error;
         AVCaptureDeviceInput *deviceInput = [AVCaptureDeviceInput deviceInputWithDevice:defaultCamera
                                                                                   error:&error];
-        if (error) NSLog(@"Cannot init device input: %@", error.localizedDescription);
+        if (error)
+            [self viewControllerLog:[NSString stringWithFormat:@"Cannot init device input: %@", error.localizedDescription]];
         _currentCameraPosition = AVCaptureDevicePositionFront;
         if ([_session canAddInput:deviceInput]) [_session addInput:deviceInput];
         
@@ -153,7 +145,7 @@ static NSDictionary *kDlibLandmarksMap = nil;
         [_session startRunning];
     }
     @catch (NSException *exception) {
-        NSLog(@"Session setup failed!");
+        [self viewControllerLog:@"Session setup failed!"];
     }
 }
 
@@ -204,13 +196,14 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
         NSError *error;
         AVCaptureDeviceInput *newInput = [[AVCaptureDeviceInput alloc] initWithDevice:newCamera
                                                                                 error:&error];
-        if (error) NSLog(@"Cannot init device input: %@", error.localizedDescription);
+        if (error)
+            [self viewControllerLog:[NSString stringWithFormat:@"Cannot init device input: %@", error.localizedDescription]];
         _currentCameraPosition = newCamera.position;
         if ([_session canAddInput:newInput]) [_session addInput:newInput];
         
         [_session commitConfiguration];
     } else {
-        NSLog(@"No session!");
+        [self viewControllerLog:@"No session!"];
     }
 }
 
@@ -222,7 +215,7 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
                                                       mediaType:AVMediaTypeVideo
                                                        position:previousPosition == AVCaptureDevicePositionFront? AVCaptureDevicePositionBack: AVCaptureDevicePositionFront];
         default:
-            NSLog(@"Previous position of camera not specified!");
+            [self viewControllerLog:@"Previous position of camera not specified!"];
             return nil;
     }
 }
@@ -288,7 +281,7 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
                                                     CGPointMake(face[idx][0].floatValue * scaleWidth,
                                                                 _viewBoundsSize.height - face[idx][1].floatValue * scaleHeight)];
                                  }
-                                 [kDlibLandmarksMap enumerateKeysAndObjectsUsingBlock:
+                                 [_serverLandmarksMap enumerateKeysAndObjectsUsingBlock:
                                   ^(NSString * _Nonnull landmarkName,
                                     NSValue * _Nonnull range,
                                     BOOL * _Nonnull stop) {
@@ -297,7 +290,7 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
                                                      withColor:UIColor.blueColor.CGColor];
                                   }];
                              } else {
-                                 NSLog(@"Less than 68 points returned by server");
+                                 [self viewControllerLog:@"Less than 68 points returned by server"];
                              }
                          }
                      }
@@ -335,6 +328,10 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
                                               style:UIAlertActionStyleCancel
                                             handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)viewControllerLog:(NSString *)content {
+    NSLog(@"%@", [NSString stringWithFormat:@"[viewController] %@", content]);
 }
 
 @end
