@@ -13,6 +13,7 @@ typedef void (^PEAServerResponseHandler)(NSDictionary * _Nullable responseDict);
 @interface PEAServer : NSObject
 
 - (instancetype _Nonnull)init __attribute__((unavailable("use serverWithAddress:")));
+
 + (PEAServer * _Nonnull)serverWithAddress:(NSString * _Nullable)address;
 - (void)sendRequest:(NSDictionary * _Nonnull)requestDict
     responseHandler:(PEAServerResponseHandler _Nonnull)responseHandler;

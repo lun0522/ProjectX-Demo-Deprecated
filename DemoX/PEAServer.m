@@ -40,7 +40,7 @@ static const NSString *kClientAuthenticationString = @"PortableEmotionAnalysis";
 }
 
 - (void)serverLog:(NSString *)content {
-    NSLog(@"%@", [NSString stringWithFormat:@"PEAServer Log - %@", content]);
+    NSLog(@"%@", [NSString stringWithFormat:@"[PEAServer] %@", content]);
 }
 
 #pragma mark Search server with Bonjour

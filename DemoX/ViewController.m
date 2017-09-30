@@ -8,6 +8,7 @@
 
 #import <AVFoundation/AVFoundation.h>
 #import <Vision/Vision.h>
+#import "LocalDetector.h"
 #import "PEAServer.h"
 #import "ViewController.h"
 
@@ -22,14 +23,10 @@ static NSDictionary *kDlibLandmarksMap = nil;
     AVCaptureVideoPreviewLayer *_previewLayer;
     AVCaptureDevicePosition _currentCameraPosition;
     
-    VNDetectFaceRectanglesRequest *_faceDetection;
-    VNDetectFaceLandmarksRequest  *_faceLandmarks;
-    VNSequenceRequestHandler *_faceDetectionRequest;
-    VNSequenceRequestHandler *_faceLandmarksRequest;
-    
-    CGSize _viewBoundsSize;
     BOOL _shouldStopToUpload;
+    LocalDetector *_detector;
     PEAServer *_server;
+    CGSize _viewBoundsSize;
 }
 
 @property (weak, nonatomic) IBOutlet UIButton *switchCameraButton;
@@ -66,20 +63,16 @@ static NSDictionary *kDlibLandmarksMap = nil;
                                                 _server = [PEAServer serverWithAddress:nil];
                                             }]];
     dispatch_async(dispatch_get_main_queue(), ^{
-        [self presentViewController:alert animated:YES completion:nil];;
+        [self presentViewController:alert animated:YES completion:nil];
+        
+        _detector = [LocalDetector detectorWithFrameSize:self.view.bounds.size];
+        _viewBoundsSize = self.view.bounds.size;
     });
-    
-    _faceDetection = [[VNDetectFaceRectanglesRequest alloc] init];
-    _faceLandmarks = [[VNDetectFaceLandmarksRequest alloc] init];
-    _faceDetectionRequest = [[VNSequenceRequestHandler alloc] init];
-    _faceLandmarksRequest = [[VNSequenceRequestHandler alloc] init];
     
     [self setupSession];
     _shapeLayer = [[CAShapeLayer alloc] init];
     _previewLayer = [AVCaptureVideoPreviewLayer layerWithSession:_session];
     _previewLayer.videoGravity = kCAGravityResizeAspectFill;
-    
-    _viewBoundsSize = self.view.bounds.size;
     _shouldStopToUpload = NO;
     
     _switchCameraButton.layer.cornerRadius = 8.0f;
@@ -185,77 +178,19 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
         [self uploadImage:[UIImage imageWithCGImage:cgImage]];
     }
     
-    [self detectFaceInCIImage:[ciImage imageByApplyingOrientation:UIImageOrientationLeftMirrored]];
-}
-
-- (void)detectFaceInCIImage:(CIImage *)image {
-    NSError *error;
-    [_faceDetectionRequest performRequests:@[_faceDetection] onCIImage:image error:&error];
-    if (error) NSLog(@"Error in face detection: %@", error.localizedDescription);
-    
-    NSArray *results = _faceDetection.results;
-    if (results.count) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            for (CAShapeLayer *layer in [_shapeLayer.sublayers copy]) [layer removeFromSuperlayer];
-        });
-        _faceLandmarks.inputFaceObservations = results;
-        [self detectLandmarksInCIImage:image];
-    }
-}
-
-- (void)detectLandmarksInCIImage:(CIImage *)image {
-    NSError *error;
-    [_faceLandmarksRequest performRequests:@[_faceLandmarks] onCIImage:image error:&error];
-    if (error) NSLog(@"Error in landmarks detection: %@", error.localizedDescription);
-    
-    NSArray<VNFaceObservation *> *results = _faceLandmarks.results;
-    [results enumerateObjectsUsingBlock:^(VNFaceObservation * _Nonnull face,
-                                          NSUInteger idx,
-                                          BOOL * _Nonnull stop) {
-        CGRect boundingBox = ((VNFaceObservation *)_faceLandmarks.inputFaceObservations[idx]).boundingBox;
-        CGRect faceBoundingBox = [self scaleRect:boundingBox toSize:_viewBoundsSize];
-        
-        VNFaceLandmarks2D *landmarks = face.landmarks;
-        NSArray<VNFaceLandmarkRegion2D *> *requiredLandmarks = @[landmarks.faceContour,
-                                                                 landmarks.leftEyebrow,
-                                                                 landmarks.rightEyebrow,
-                                                                 landmarks.noseCrest,
-                                                                 landmarks.nose,
-                                                                 landmarks.leftEye,
-                                                                 landmarks.rightEye,
-                                                                 landmarks.outerLips,
-                                                                 landmarks.innerLips];
-        
-        for (VNFaceLandmarkRegion2D *landmarkRegion in requiredLandmarks) {
-            if (landmarkRegion.pointCount) {
-                [self convertLandmarkPoints:landmarkRegion.normalizedPoints
-                             withPointCount:landmarkRegion.pointCount
-                       forFaceInBoundingBox:faceBoundingBox];
-            }
-        }
-    }];
-}
-
-- (CGRect)scaleRect:(const CGRect)rect
-             toSize:(const CGSize)size {
-    return CGRectMake(rect.origin.x * size.width,
-                      rect.origin.y * size.height,
-                      rect.size.width * size.width,
-                      rect.size.height * size.height);
-}
-
-- (void)convertLandmarkPoints:(const CGPoint *)landmarkPoints
-               withPointCount:(NSUInteger)pointCount
-         forFaceInBoundingBox:(CGRect)boundingBox {
-    NSMutableArray *points = [[NSMutableArray alloc] initWithCapacity:pointCount];
-    for (NSUInteger idx = 0; idx < pointCount; ++idx) {
-        points[idx] = [NSValue valueWithCGPoint:CGPointMake(landmarkPoints[idx].x * boundingBox.size.width
-                                                            + boundingBox.origin.x,
-                                                            landmarkPoints[idx].y * boundingBox.size.height
-                                                            + boundingBox.origin.y)];
-    }
-    
-    [self drawLineFromPoints:points inRange:NSMakeRange(0, pointCount) withColor:UIColor.redColor.CGColor];
+    __weak ViewController *weakSelf = self;
+    [_detector detectFaceLandmarksInCIImage:[ciImage imageByApplyingOrientation:UIImageOrientationLeftMirrored]
+                        didFindFaceCallback:^() {
+                            dispatch_async(dispatch_get_main_queue(), ^{
+                                for (CAShapeLayer *layer in [_shapeLayer.sublayers copy])
+                                    [layer removeFromSuperlayer];
+                            });
+                        }
+                              resultHandler:^(NSArray * _Nonnull points) {
+                            [weakSelf drawLineFromPoints:points
+                                                 inRange:NSMakeRange(0, points.count)
+                                               withColor:UIColor.redColor.CGColor];
+                        }];
 }
 
 - (void)tapSwitchCamera {
@@ -268,7 +203,7 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
         [_session removeInput:currentInput];
         NSError *error;
         AVCaptureDeviceInput *newInput = [[AVCaptureDeviceInput alloc] initWithDevice:newCamera
-                                                                                   error:&error];
+                                                                                error:&error];
         if (error) NSLog(@"Cannot init device input: %@", error.localizedDescription);
         _currentCameraPosition = newCamera.position;
         if ([_session canAddInput:newInput]) [_session addInput:newInput];
