@@ -70,7 +70,8 @@ static NSDictionary *kDlibLandmarksMap = nil;
     [self serverLog:@"Start browsing for Bonjour services"];
 }
 
-- (void)stopSearch {
+- (void)stopBrowsing {
+    [self serverLog:@"Stop browsing"];
     [self browserCleanup];
     for (NSNetService *netServiceResolver in _netServiceResolverList)
         [self resolverCleanup:netServiceResolver];
@@ -89,7 +90,7 @@ static NSDictionary *kDlibLandmarksMap = nil;
 
 - (void)netServiceBrowser:(NSNetServiceBrowser *)browser
              didNotSearch:(NSDictionary<NSString *,NSNumber *> *)errorDict {
-    [self stopSearch];
+    [self stopBrowsing];
     [self serverLog:[NSString stringWithFormat:@"Error in browsing for Bonjour services: %@", errorDict]];
 }
 
@@ -113,7 +114,7 @@ static NSDictionary *kDlibLandmarksMap = nil;
                     _serverAddress = [[NSString alloc] initWithData:(NSData *)txtRecord[@"Address"]
                                                            encoding:NSUTF8StringEncoding];
                     [self serverLog:[NSString stringWithFormat:@"Use address: %@", _serverAddress]];
-                    [self stopSearch];
+                    [self stopBrowsing];
                     return;
                 }
                 else [self serverLog:[NSString stringWithFormat:@"Authenticated, but no address found: %@", service]];
@@ -142,9 +143,9 @@ static NSDictionary *kDlibLandmarksMap = nil;
     }
 }
 
-#pragma mark Send request to server
-- (void)sendRequest:(NSDictionary * _Nonnull)requestDict
-    responseHandler:(PEAServerResponseHandler _Nonnull)responseHandler {
+#pragma mark Send data to server
+- (void)sendData:(NSData * _Nonnull)data
+ responseHandler:(PEAServerResponseHandler _Nonnull)responseHandler {
     if (!_serverAddress) {
         NSString *errorString = @"No server address found";
         [self serverLog:errorString];
@@ -152,28 +153,15 @@ static NSDictionary *kDlibLandmarksMap = nil;
         return;
     }
     
-    NSError *error;
-    NSData *jsonData = [NSJSONSerialization dataWithJSONObject:requestDict
-                                                       options:kNilOptions
-                                                         error:&error];
-    if (error) {
-        NSString *errorString = [NSString stringWithFormat:@"Failed converting dictionary to JSON: %@", error.localizedDescription];
-        [self serverLog:errorString];
-        responseHandler(@{@"error": errorString});
-        return;
-    }
-    
-    NSString *dataLength = [NSString stringWithFormat:@"%ld", jsonData.length];
-    NSMutableURLRequest *request =
-    [NSMutableURLRequest requestWithURL:[NSURL URLWithString:_serverAddress]
-                            cachePolicy:NSURLRequestReloadIgnoringCacheData
-                        timeoutInterval:10];
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:_serverAddress]
+                                                           cachePolicy:NSURLRequestReloadIgnoringCacheData
+                                                       timeoutInterval:10];
     
     [request setHTTPMethod:@"POST"];
-    [request setHTTPBody:jsonData];
+    [request setHTTPBody:data];
     [request addValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
     [request addValue:@"application/json" forHTTPHeaderField:@"Accept"];
-    [request setValue:dataLength forHTTPHeaderField:@"Content-Length"];
+    [request setValue:[NSString stringWithFormat:@"%ld", data.length] forHTTPHeaderField:@"Content-Length"];
     [request setValue:kClientAuthenticationString.copy forHTTPHeaderField:@"Authentication"];
     
     NSURLSessionConfiguration *configuration = [NSURLSessionConfiguration defaultSessionConfiguration];
@@ -181,7 +169,7 @@ static NSDictionary *kDlibLandmarksMap = nil;
     NSURLSession *urlSession = [NSURLSession sessionWithConfiguration:configuration];
     NSURLSessionTask *task =
     [urlSession uploadTaskWithRequest:request
-                             fromData:jsonData
+                             fromData:data
                     completionHandler:^(NSData * _Nullable data,
                                         NSURLResponse * _Nullable response,
                                         NSError * _Nullable error) {

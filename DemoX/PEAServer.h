@@ -15,8 +15,8 @@ typedef void (^PEAServerResponseHandler)(NSDictionary * _Nullable responseDict);
 - (instancetype _Nonnull)init __attribute__((unavailable("use serverWithAddress:")));
 
 + (PEAServer * _Nonnull)serverWithAddress:(NSString * _Nullable)address;
-- (void)sendRequest:(NSDictionary * _Nonnull)requestDict
-    responseHandler:(PEAServerResponseHandler _Nonnull)responseHandler;
+- (void)sendData:(NSData * _Nonnull)data
+ responseHandler:(PEAServerResponseHandler _Nonnull)responseHandler;
 - (NSDictionary * _Nonnull)getLandmarksMap;
 
 @end

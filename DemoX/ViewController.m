@@ -157,7 +157,9 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
     
     CIImage *ciImage = [CIImage imageWithCVImageBuffer:pixelBuffer
                                                options:(__bridge NSDictionary *)attachments];
-    if (_currentCameraPosition == AVCaptureDevicePositionBack) ciImage = [ciImage imageByApplyingOrientation:UIImageOrientationUpMirrored];
+    if (_currentCameraPosition == AVCaptureDevicePositionBack) 
+        ciImage = [ciImage imageByApplyingOrientation:UIImageOrientationUpMirrored];
+    ciImage = [ciImage imageByApplyingOrientation:UIImageOrientationLeftMirrored];
     
     if (_shouldStopToUpload) {
         _shouldStopToUpload = NO;
@@ -166,12 +168,13 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
         // should convert CIImage to CGImage, and then to UIImage
         // otherwise UIImageJPEGRepresentation() will return nil
         CIContext *context = [[CIContext alloc] initWithOptions:nil];
-        CGImageRef cgImage = [context createCGImage:ciImage fromRect:ciImage.extent];
+        CGImageRef cgImage = [context createCGImage:ciImage
+                                           fromRect:ciImage.extent];
         [self uploadImage:[UIImage imageWithCGImage:cgImage]];
     }
     
     __weak ViewController *weakSelf = self;
-    [_detector detectFaceLandmarksInCIImage:[ciImage imageByApplyingOrientation:UIImageOrientationLeftMirrored]
+    [_detector detectFaceLandmarksInCIImage:ciImage
                         didFindFaceCallback:^() {
                             dispatch_async(dispatch_get_main_queue(), ^{
                                 for (CAShapeLayer *layer in [_shapeLayer.sublayers copy])
@@ -257,46 +260,43 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
 }
 
 - (void)uploadImage:(UIImage *)image {
-    NSString *imageString = [UIImageJPEGRepresentation(image, 1.0) base64EncodedStringWithOptions:NSDataBase64EncodingEndLineWithLineFeed];
-    NSDictionary *requestDict = @{@"image": imageString};
-    
-    [_server sendRequest:requestDict
-         responseHandler:^(NSDictionary * _Nullable responseDict) {
-             if (responseDict[@"error"]) {
-                 [self presentError:responseDict[@"error"]];
-             } else {
-                 if (responseDict[@"landmarks"]) {
-                     NSArray *landmarks = responseDict[@"landmarks"];
-                     if (landmarks.class == NSNull.class) {
-                         [self presentError:@"Server found no face"];
-                     } else {
-                         CGFloat scaleWidth = _viewBoundsSize.width / image.size.height;
-                         CGFloat scaleHeight = _viewBoundsSize.height / image.size.width;
-                         
-                         for (NSArray<NSArray<NSNumber *> *> *face in landmarks) {
-                             if (face.count == 68) {
-                                 NSMutableArray *points = [[NSMutableArray alloc] initWithCapacity:68];
-                                 for (NSUInteger idx = 0; idx < 68; ++idx) {
-                                     points[idx] = [NSValue valueWithCGPoint:
-                                                    CGPointMake(face[idx][0].floatValue * scaleWidth,
-                                                                _viewBoundsSize.height - face[idx][1].floatValue * scaleHeight)];
-                                 }
-                                 [_serverLandmarksMap enumerateKeysAndObjectsUsingBlock:
-                                  ^(NSString * _Nonnull landmarkName,
-                                    NSValue * _Nonnull range,
-                                    BOOL * _Nonnull stop) {
-                                      [self drawLineFromPoints:points
-                                                       inRange:[range rangeValue]
-                                                     withColor:UIColor.blueColor.CGColor];
-                                  }];
-                             } else {
-                                 [self viewControllerLog:@"Less than 68 points returned by server"];
-                             }
-                         }
-                     }
-                 }
-             }
-         }];
+    [_server sendData:UIImageJPEGRepresentation(image, 1.0)
+      responseHandler:^(NSDictionary * _Nullable responseDict) {
+          if (responseDict[@"error"]) {
+              [self presentError:responseDict[@"error"]];
+          } else {
+              if (responseDict[@"landmarks"]) {
+                  NSArray *landmarks = responseDict[@"landmarks"];
+                  if (landmarks.class == NSNull.class) {
+                      [self presentError:@"Server found no face"];
+                  } else {
+                      CGFloat scaleWidth = _viewBoundsSize.width / image.size.width;
+                      CGFloat scaleHeight = _viewBoundsSize.height / image.size.height;
+                      
+                      for (NSArray<NSArray<NSNumber *> *> *face in landmarks) {
+                          if (face.count == 68) {
+                              NSMutableArray *points = [[NSMutableArray alloc] initWithCapacity:68];
+                              for (NSUInteger idx = 0; idx < 68; ++idx) {
+                                  points[idx] = [NSValue valueWithCGPoint:
+                                                 CGPointMake(face[idx][0].floatValue * scaleWidth,
+                                                             _viewBoundsSize.height - face[idx][1].floatValue * scaleHeight)];
+                              }
+                              [_serverLandmarksMap enumerateKeysAndObjectsUsingBlock:
+                               ^(NSString * _Nonnull landmarkName,
+                                 NSValue * _Nonnull range,
+                                 BOOL * _Nonnull stop) {
+                                   [self drawLineFromPoints:points
+                                                    inRange:[range rangeValue]
+                                                  withColor:UIColor.blueColor.CGColor];
+                               }];
+                          } else {
+                              [self viewControllerLog:@"Less than 68 points returned by server"];
+                          }
+                      }
+                  }
+              }
+          }
+      }];
 }
 
 - (void)drawLineFromPoints:(const NSArray<NSValue *> *)points
