@@ -10,6 +10,7 @@
 #import <Vision/Vision.h>
 #import "LocalDetector.h"
 #import "PEAServer.h"
+#import "DMXError.h"
 #import "ViewController.h"
 
 static const NSString *kDefaultServerAddress = @"192.168.0.7:8080";
@@ -181,10 +182,11 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
                                     [layer removeFromSuperlayer];
                             });
                         }
-                              resultHandler:^(NSArray * _Nonnull points) {
-                            [weakSelf drawLineFromPoints:points
-                                                 inRange:NSMakeRange(0, points.count)
-                                               withColor:UIColor.redColor.CGColor];
+                              resultHandler:^(NSArray * _Nullable points, NSError * _Nullable error) {
+                                  if (error) [self presentError:error.localizedDescription];
+                                  else [weakSelf drawLineFromPoints:points
+                                                            inRange:NSMakeRange(0, points.count)
+                                                          withColor:UIColor.redColor.CGColor];
                         }];
 }
 
@@ -261,12 +263,12 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
 
 - (void)uploadImage:(UIImage *)image {
     [_server sendData:UIImageJPEGRepresentation(image, 1.0)
-      responseHandler:^(NSDictionary * _Nullable responseDict) {
-          if (responseDict[@"error"]) {
-              [self presentError:responseDict[@"error"]];
+      responseHandler:^(NSDictionary * _Nullable response, NSError * _Nullable error) {
+          if (error) {
+              [self presentError:error.localizedDescription];
           } else {
-              if (responseDict[@"landmarks"]) {
-                  NSArray *landmarks = responseDict[@"landmarks"];
+              if (response[@"landmarks"]) {
+                  NSArray *landmarks = response[@"landmarks"];
                   if (landmarks.class == NSNull.class) {
                       [self presentError:@"Server found no face"];
                   } else {

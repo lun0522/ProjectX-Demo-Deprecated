@@ -9,7 +9,7 @@
 #import <Foundation/Foundation.h>
 
 typedef void (^LocalDetectorDidFindFaceCallback)(void);
-typedef void (^FaceLandmarksDetectionResultHandler)(NSArray * _Nonnull points);
+typedef void (^FaceLandmarksDetectionResultHandler)(NSArray * _Nullable points, NSError * _Nullable error);
 
 @interface LocalDetector : NSObject
 

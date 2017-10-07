@@ -8,7 +8,7 @@
 
 #import <Foundation/Foundation.h>
 
-typedef void (^PEAServerResponseHandler)(NSDictionary * _Nullable responseDict);
+typedef void (^PEAServerResponseHandler)(NSDictionary * _Nullable response, NSError * _Nullable error);
 
 @interface PEAServer : NSObject
 

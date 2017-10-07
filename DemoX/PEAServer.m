@@ -6,6 +6,7 @@
 //  Copyright © 2017年 Lun. All rights reserved.
 //
 
+#import "DMXError.h"
 #import "PEAServer.h"
 
 static const NSString *kServerIdentityString = @"PEAServer";
@@ -147,9 +148,7 @@ static NSDictionary *kDlibLandmarksMap = nil;
 - (void)sendData:(NSData * _Nonnull)data
  responseHandler:(PEAServerResponseHandler _Nonnull)responseHandler {
     if (!_serverAddress) {
-        NSString *errorString = @"No server address found";
-        [self serverLog:errorString];
-        responseHandler(@{@"error": errorString});
+        responseHandler(nil, [self sendDataErrorWithDescription:@"No server address found"]);
         return;
     }
     
@@ -174,25 +173,29 @@ static NSDictionary *kDlibLandmarksMap = nil;
                                         NSURLResponse * _Nullable response,
                                         NSError * _Nullable error) {
                         if (error) {
-                            NSString *errorString = [NSString stringWithFormat:@"Failed in uploading: %@", error.localizedDescription];
-                            [self serverLog:errorString];
-                            responseHandler(@{@"error": errorString});
+                            responseHandler(nil, [self sendDataErrorWithDescription:
+                                                  [NSString stringWithFormat:@"Failed in uploading: %@", error.localizedDescription]]);
                         } else {
                             NSError *error;
-                            NSDictionary *responseDict =
-                            [NSJSONSerialization JSONObjectWithData:data
-                                                            options:kNilOptions
-                                                              error:&error];
+                            NSDictionary *responseDict = [NSJSONSerialization JSONObjectWithData:data
+                                                                                         options:kNilOptions
+                                                                                           error:&error];
                             if (error) {
-                                NSString *errorString = [NSString stringWithFormat:@"Failed converting JSON to dictionary: %@", error.localizedDescription];
-                                [self serverLog:errorString];
-                                responseHandler(@{@"error": errorString});
+                                responseHandler(nil, [self sendDataErrorWithDescription:
+                                                      [NSString stringWithFormat:@"Failed converting JSON to dictionary: %@", error.localizedDescription]]);
                             } else {
-                                responseHandler(responseDict);
+                                responseHandler(responseDict, nil);
                             }
                         }
                     }];
     [task resume];
+}
+
+- (NSError *)sendDataErrorWithDescription:(NSString *)description {
+    [self serverLog:description];
+    return [NSError errorWithDomain:DMXErrorDomain
+                               code:DMXSendDataError
+                           userInfo:@{NSLocalizedDescriptionKey: description}];
 }
 
 @end

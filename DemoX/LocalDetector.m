@@ -8,6 +8,7 @@
 
 #import <UIKit/UIKit.h>
 #import <Vision/Vision.h>
+#import "DMXError.h"
 #import "LocalDetector.h"
 
 @interface LocalDetector() {
@@ -39,8 +40,14 @@
     return [[LocalDetector alloc] initWithFrameSize:frameSize];
 }
 
-- (void)detectorLog:(NSString *)content {
-    NSLog(@"%@", [NSString stringWithFormat:@"[Detector] %@", content]);
+- (void)detectionErrorWithDescription:(NSString *)description {
+    NSLog(@"%@", [NSString stringWithFormat:@"[Detector] %@", description]);
+    if (_resultHandler) {
+        _resultHandler(nil, [NSError errorWithDomain:DMXErrorDomain
+                                                code:DMXDetectionError
+                                            userInfo:@{NSLocalizedDescriptionKey: description}]);
+        _resultHandler = nil;
+    }
 }
 
 - (void)detectFaceLandmarksInCIImage:(CIImage * _Nonnull)image
@@ -55,7 +62,7 @@
     NSError *error;
     [_faceDetectionRequest performRequests:@[_faceDetection] onCIImage:image error:&error];
     if (error) {
-        [self detectorLog:[NSString stringWithFormat:@"Error in face detection: %@", error.localizedDescription]];
+        [self detectionErrorWithDescription:[NSString stringWithFormat:@"Error in face detection: %@", error.localizedDescription]];
         return;
     }
     
@@ -78,7 +85,7 @@
                                                               faceBoundingBox.origin.y + faceBoundingBox.size.height)];
             points[4] = points[0];
             
-            _resultHandler([points copy]);
+            if (_resultHandler) _resultHandler([points copy], nil);
         }];
         
         _faceLandmarksDetection.inputFaceObservations = _faceDetection.results;
@@ -90,7 +97,7 @@
     NSError *error;
     [_faceLandmarksRequest performRequests:@[_faceLandmarksDetection] onCIImage:image error:&error];
     if (error) {
-        [self detectorLog:[NSString stringWithFormat:@"Error in landmarks detection: %@", error.localizedDescription]];
+        [self detectionErrorWithDescription:[NSString stringWithFormat:@"Error in landmarks detection: %@", error.localizedDescription]];
         return;
     }
     
@@ -142,7 +149,7 @@
                                                             landmarkPoints[idx].y * boundingBox.size.height
                                                             + boundingBox.origin.y)];
     }
-    _resultHandler([points copy]);
+    if (_resultHandler) _resultHandler([points copy], nil);
 }
 
 @end
