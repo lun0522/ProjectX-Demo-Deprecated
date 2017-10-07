@@ -69,7 +69,7 @@ static const NSString *kContinueButtonTitle = @"Continue";
     dispatch_async(dispatch_get_main_queue(), ^{
         [self presentViewController:alert animated:YES completion:nil];
         
-        _detector = [LocalDetector detectorWithFrameSize:self.view.bounds.size];
+        _detector = [[LocalDetector alloc] init];
         _viewBoundsSize = self.view.bounds.size;
     });
     
@@ -153,6 +153,9 @@ static const NSString *kContinueButtonTitle = @"Continue";
 - (void)captureOutput:(AVCaptureOutput *)output
 didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
        fromConnection:(AVCaptureConnection *)connection {
+    if (_shouldStopToUpload) [self sessionPauseRunning];
+    BOOL shouldUpload = _shouldStopToUpload;
+    
     CVImageBufferRef pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
     CFDictionaryRef attachments = CMCopyDictionaryOfAttachments(kCFAllocatorDefault, sampleBuffer, kCMAttachmentMode_ShouldPropagate);
     
@@ -162,31 +165,25 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
         ciImage = [ciImage imageByApplyingOrientation:UIImageOrientationUpMirrored];
     ciImage = [ciImage imageByApplyingOrientation:UIImageOrientationLeftMirrored];
     
-    if (_shouldStopToUpload) {
-        _shouldStopToUpload = NO;
-        [self sessionPauseRunning];
-        
-        // should convert CIImage to CGImage, and then to UIImage
-        // otherwise UIImageJPEGRepresentation() will return nil
-        CIContext *context = [[CIContext alloc] initWithOptions:nil];
-        CGImageRef cgImage = [context createCGImage:ciImage
-                                           fromRect:ciImage.extent];
-        [self uploadImage:[UIImage imageWithCGImage:cgImage]];
-    }
-    
     __weak ViewController *weakSelf = self;
     [_detector detectFaceLandmarksInCIImage:ciImage
-                        didFindFaceCallback:^() {
+                        didFindFaceCallback:^(BOOL hasFace, CGRect faceBoundingBox) {
                             dispatch_async(dispatch_get_main_queue(), ^{
                                 for (CAShapeLayer *layer in [_shapeLayer.sublayers copy])
                                     [layer removeFromSuperlayer];
                             });
+                            
+                            if (shouldUpload) {
+                                if (!hasFace) [weakSelf presentError:@"No face found"];
+                                else [weakSelf uploadCIImage:ciImage inBoundingBox:faceBoundingBox];
+                            }
                         }
                               resultHandler:^(NSArray * _Nullable points, NSError * _Nullable error) {
                                   if (error) [self presentError:error.localizedDescription];
                                   else [weakSelf drawLineFromPoints:points
                                                             inRange:NSMakeRange(0, points.count)
-                                                          withColor:UIColor.redColor.CGColor];
+                                                          withColor:UIColor.redColor.CGColor
+                                                              scale:_viewBoundsSize];
                         }];
 }
 
@@ -240,6 +237,7 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
 }
 
 - (void)tapContinue {
+    _shouldStopToUpload = NO;
     [self sessionContinueRunning];
 }
 
@@ -261,39 +259,46 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
     [button addTarget:self action:sel forControlEvents:UIControlEventTouchDown];
 }
 
-- (void)uploadImage:(UIImage *)image {
-    [_server sendData:UIImageJPEGRepresentation(image, 1.0)
+- (void)uploadCIImage:(CIImage *)ciImage
+        inBoundingBox:(CGRect)boundingBox {
+    CIImage *faceImage = [ciImage imageByCroppingToRect:boundingBox];
+    CGSize scaleImageToScreen = CGSizeMake(_viewBoundsSize.width / ciImage.extent.size.width,
+                                           _viewBoundsSize.height / ciImage.extent.size.height);
+    
+    // should convert CIImage to CGImage, and then to UIImage
+    // otherwise UIImageJPEGRepresentation() will return nil
+    CIContext *context = [[CIContext alloc] initWithOptions:nil];
+    CGImageRef cgImage = [context createCGImage:faceImage
+                                       fromRect:faceImage.extent];
+    
+    [_server sendData:UIImageJPEGRepresentation([UIImage imageWithCGImage:cgImage], 1.0)
       responseHandler:^(NSDictionary * _Nullable response, NSError * _Nullable error) {
           if (error) {
               [self presentError:error.localizedDescription];
           } else {
               if (response[@"landmarks"]) {
-                  NSArray *landmarks = response[@"landmarks"];
+                  NSArray<NSArray<NSNumber *> *> *landmarks = response[@"landmarks"];
                   if (landmarks.class == NSNull.class) {
                       [self presentError:@"Server found no face"];
                   } else {
-                      CGFloat scaleWidth = _viewBoundsSize.width / image.size.width;
-                      CGFloat scaleHeight = _viewBoundsSize.height / image.size.height;
-                      
-                      for (NSArray<NSArray<NSNumber *> *> *face in landmarks) {
-                          if (face.count == 68) {
-                              NSMutableArray *points = [[NSMutableArray alloc] initWithCapacity:68];
-                              for (NSUInteger idx = 0; idx < 68; ++idx) {
-                                  points[idx] = [NSValue valueWithCGPoint:
-                                                 CGPointMake(face[idx][0].floatValue * scaleWidth,
-                                                             _viewBoundsSize.height - face[idx][1].floatValue * scaleHeight)];
-                              }
-                              [_serverLandmarksMap enumerateKeysAndObjectsUsingBlock:
-                               ^(NSString * _Nonnull landmarkName,
-                                 NSValue * _Nonnull range,
-                                 BOOL * _Nonnull stop) {
-                                   [self drawLineFromPoints:points
-                                                    inRange:[range rangeValue]
-                                                  withColor:UIColor.blueColor.CGColor];
-                               }];
-                          } else {
-                              [self viewControllerLog:@"Less than 68 points returned by server"];
+                      if (landmarks.count == 68) {
+                          NSMutableArray *points = [[NSMutableArray alloc] initWithCapacity:68];
+                          for (NSUInteger idx = 0; idx < 68; ++idx) {
+                              points[idx] = [NSValue valueWithCGPoint:
+                                             CGPointMake(landmarks[idx][0].floatValue + boundingBox.origin.x,
+                                                         boundingBox.size.height - landmarks[idx][1].floatValue + boundingBox.origin.y)];
                           }
+                          [_serverLandmarksMap enumerateKeysAndObjectsUsingBlock:
+                           ^(NSString * _Nonnull landmarkName,
+                             NSValue * _Nonnull range,
+                             BOOL * _Nonnull stop) {
+                               [self drawLineFromPoints:points
+                                                inRange:[range rangeValue]
+                                              withColor:UIColor.blueColor.CGColor
+                                                  scale:scaleImageToScreen];
+                           }];
+                      } else {
+                          [self viewControllerLog:@"Less than 68 points returned by server"];
                       }
                   }
               }
@@ -303,17 +308,20 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
 
 - (void)drawLineFromPoints:(const NSArray<NSValue *> *)points
                    inRange:(const NSRange)range
-                 withColor:(const CGColorRef)color {
+                 withColor:(const CGColorRef)color
+                     scale:(CGSize)scale {
     CAShapeLayer *newLayer = [[CAShapeLayer alloc] init];
     newLayer.strokeColor = color;
     newLayer.lineWidth = 2.0f;
     newLayer.fillColor = UIColor.clearColor.CGColor;
     
     UIBezierPath *path = [[UIBezierPath alloc] init];
-    [path moveToPoint:points[range.location].CGPointValue];
+    [path moveToPoint:CGPointMake(points[range.location].CGPointValue.x * scale.width,
+                                  points[range.location].CGPointValue.y * scale.height)];
     
     for (NSUInteger idx = range.location; idx < NSMaxRange(range); ++idx) {
-        [path addLineToPoint:points[idx].CGPointValue];
+        [path addLineToPoint:CGPointMake(points[idx].CGPointValue.x * scale.width,
+                                         points[idx].CGPointValue.y * scale.height)];
     }
     newLayer.path = path.CGPath;
     

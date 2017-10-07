@@ -18,26 +18,20 @@
     VNSequenceRequestHandler *_faceLandmarksRequest;
     LocalDetectorDidFindFaceCallback _didFindFaceCallback;
     FaceLandmarksDetectionResultHandler _resultHandler;
-    CGSize _frameSize;
 }
 
 @end
 
 @implementation LocalDetector
 
-- (instancetype)initWithFrameSize:(CGSize)frameSize {
+- (instancetype)init {
     if (self = [super init]) {
         _faceDetection = [[VNDetectFaceRectanglesRequest alloc] init];
         _faceLandmarksDetection = [[VNDetectFaceLandmarksRequest alloc] init];
         _faceDetectionRequest = [[VNSequenceRequestHandler alloc] init];
         _faceLandmarksRequest = [[VNSequenceRequestHandler alloc] init];
-        _frameSize = frameSize;
     }
     return self;
-}
-
-+ (LocalDetector * _Nonnull)detectorWithFrameSize:(CGSize)frameSize {
-    return [[LocalDetector alloc] initWithFrameSize:frameSize];
 }
 
 - (void)detectionErrorWithDescription:(NSString *)description {
@@ -66,30 +60,47 @@
         return;
     }
     
-    _didFindFaceCallback();
     if (_faceDetection.results.count) {
-        NSMutableArray *points = [[NSMutableArray alloc] initWithCapacity:5];
-        [_faceDetection.results enumerateObjectsUsingBlock:^(VNFaceObservation * _Nonnull face,
-                                                             NSUInteger idx,
-                                                             BOOL * _Nonnull stop) {
-            CGRect faceBoundingBox = [self scaleRect:face.boundingBox toSize:_frameSize];
-            [points removeAllObjects];
-            
-            points[0] = [NSValue valueWithCGPoint:CGPointMake(faceBoundingBox.origin.x,
-                                                              faceBoundingBox.origin.y)];
-            points[1] = [NSValue valueWithCGPoint:CGPointMake(faceBoundingBox.origin.x + faceBoundingBox.size.width,
-                                                              faceBoundingBox.origin.y)];
-            points[2] = [NSValue valueWithCGPoint:CGPointMake(faceBoundingBox.origin.x + faceBoundingBox.size.width,
-                                                              faceBoundingBox.origin.y + faceBoundingBox.size.height)];
-            points[3] = [NSValue valueWithCGPoint:CGPointMake(faceBoundingBox.origin.x,
-                                                              faceBoundingBox.origin.y + faceBoundingBox.size.height)];
-            points[4] = points[0];
-            
-            if (_resultHandler) _resultHandler([points copy], nil);
-        }];
+        VNFaceObservation *faceObservation;
         
-        _faceLandmarksDetection.inputFaceObservations = _faceDetection.results;
+        if (_faceDetection.results.count == 1) faceObservation = _faceDetection.results[0];
+        else {
+            NSArray *sortedObservations = [_faceDetection.results
+                                           sortedArrayUsingComparator:^NSComparisonResult(VNFaceObservation * _Nonnull face1,
+                                                                                          VNFaceObservation * _Nonnull face2) {
+                                               NSNumber *area1 = @(face1.boundingBox.size.width * face1.boundingBox.size.height);
+                                               NSNumber *area2 = @(face2.boundingBox.size.width * face2.boundingBox.size.height);
+                                               return [area2 compare:area1];
+                                           }];
+            faceObservation = sortedObservations[0];
+        }
+        
+        // face bounding box is expanded for 25% vertically
+        CGRect expandedFaceRect = faceObservation.boundingBox;
+        expandedFaceRect.origin.y = MAX(expandedFaceRect.origin.y - expandedFaceRect.size.height * 0.25, 0);
+        expandedFaceRect.size.height *= MIN(1.25, (image.extent.size.height - expandedFaceRect.origin.y) / expandedFaceRect.size.height);
+        _didFindFaceCallback(YES, [self scaleRect:expandedFaceRect toSize:image.extent.size]);
+        
+        CGRect faceBoundingBox = expandedFaceRect;
+        NSArray *points = [NSArray arrayWithObjects:
+                           [NSValue valueWithCGPoint:CGPointMake(faceBoundingBox.origin.x,
+                                                                 faceBoundingBox.origin.y)],
+                           [NSValue valueWithCGPoint:CGPointMake(faceBoundingBox.origin.x + faceBoundingBox.size.width,
+                                                                 faceBoundingBox.origin.y)],
+                           [NSValue valueWithCGPoint:CGPointMake(faceBoundingBox.origin.x + faceBoundingBox.size.width,
+                                                                 faceBoundingBox.origin.y + faceBoundingBox.size.height)],
+                           [NSValue valueWithCGPoint:CGPointMake(faceBoundingBox.origin.x,
+                                                                 faceBoundingBox.origin.y + faceBoundingBox.size.height)],
+                           [NSValue valueWithCGPoint:CGPointMake(faceBoundingBox.origin.x,
+                                                                 faceBoundingBox.origin.y)],
+                           nil];
+        if (_resultHandler) _resultHandler(points, nil);
+        
+        VNFaceObservation *expandedFaceObservation = [VNFaceObservation observationWithBoundingBox:expandedFaceRect];
+        _faceLandmarksDetection.inputFaceObservations = @[expandedFaceObservation];
         [self detectLandmarksInCIImage:image];
+    } else {
+        _didFindFaceCallback(NO, (CGRect){});
     }
 }
 
@@ -105,7 +116,6 @@
                                                                   NSUInteger idx,
                                                                   BOOL * _Nonnull stop) {
         CGRect boundingBox = ((VNFaceObservation *)_faceLandmarksDetection.inputFaceObservations[idx]).boundingBox;
-        CGRect faceBoundingBox = [self scaleRect:boundingBox toSize:_frameSize];
         
         VNFaceLandmarks2D *landmarks = face.landmarks;
         NSDictionary *requestedLandmarks = @{
@@ -125,7 +135,7 @@
             if (landmarkRegion.pointCount) {
                 [self convertLandmarkPoints:landmarkRegion.normalizedPoints
                              withPointCount:landmarkRegion.pointCount
-                       forFaceInBoundingBox:faceBoundingBox];
+                       forFaceInBoundingBox:boundingBox];
             }
         }];
     }];

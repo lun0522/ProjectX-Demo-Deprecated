@@ -8,14 +8,11 @@
 
 #import <Foundation/Foundation.h>
 
-typedef void (^LocalDetectorDidFindFaceCallback)(void);
+typedef void (^LocalDetectorDidFindFaceCallback)(BOOL hasFace, CGRect faceBoundingBox);
 typedef void (^FaceLandmarksDetectionResultHandler)(NSArray * _Nullable points, NSError * _Nullable error);
 
 @interface LocalDetector : NSObject
 
-- (instancetype _Nonnull)init __attribute__((unavailable("use detectorWithFrameSize:")));
-
-+ (LocalDetector * _Nonnull)detectorWithFrameSize:(CGSize)frameSize;
 - (void)detectFaceLandmarksInCIImage:(CIImage * _Nonnull)image
                  didFindFaceCallback:(LocalDetectorDidFindFaceCallback _Nullable)callback
                        resultHandler:(FaceLandmarksDetectionResultHandler _Nullable)handler;
