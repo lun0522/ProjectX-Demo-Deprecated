@@ -75,13 +75,9 @@
             faceObservation = sortedObservations[0];
         }
         
-        // face bounding box is expanded for 25% vertically
-        CGRect expandedFaceRect = faceObservation.boundingBox;
-        expandedFaceRect.origin.y = MAX(expandedFaceRect.origin.y - expandedFaceRect.size.height * 0.25, 0);
-        expandedFaceRect.size.height *= MIN(1.25, (image.extent.size.height - expandedFaceRect.origin.y) / expandedFaceRect.size.height);
-        _didFindFaceCallback(YES, [self scaleRect:expandedFaceRect toSize:image.extent.size]);
+        CGRect faceBoundingBox = faceObservation.boundingBox;
+        _didFindFaceCallback(YES, [self scaleRect:faceBoundingBox toSize:image.extent.size]);
         
-        CGRect faceBoundingBox = expandedFaceRect;
         NSArray *points = [NSArray arrayWithObjects:
                            [NSValue valueWithCGPoint:CGPointMake(faceBoundingBox.origin.x,
                                                                  faceBoundingBox.origin.y)],
@@ -96,7 +92,7 @@
                            nil];
         if (_resultHandler) _resultHandler(points, nil);
         
-        VNFaceObservation *expandedFaceObservation = [VNFaceObservation observationWithBoundingBox:expandedFaceRect];
+        VNFaceObservation *expandedFaceObservation = [VNFaceObservation observationWithBoundingBox:faceBoundingBox];
         _faceLandmarksDetection.inputFaceObservations = @[expandedFaceObservation];
         [self detectLandmarksInCIImage:image];
     } else {

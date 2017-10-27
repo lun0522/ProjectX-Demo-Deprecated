@@ -13,6 +13,8 @@
 #import "DMXError.h"
 #import "ViewController.h"
 
+#define SERVER_REALTIME_DETECTION 0
+
 static const NSString *kDefaultServerAddress = @"192.168.0.7:8080";
 static const NSString *kUploadPhotoButtonTitle = @"Upload Photo";
 static const NSString *kContinueButtonTitle = @"Continue";
@@ -92,6 +94,11 @@ static const NSString *kContinueButtonTitle = @"Continue";
     [_uploadPhotoButton addTarget:self
                            action:@selector(tapUploadPhoto)
                  forControlEvents:UIControlEventTouchDown];
+    
+    if (SERVER_REALTIME_DETECTION) {
+        _uploadPhotoButton.hidden = YES;
+        _uploadPhotoButton.userInteractionEnabled = NO;
+    }
 }
 
 - (void)viewDidLayoutSubviews {
@@ -173,8 +180,10 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
                                     [layer removeFromSuperlayer];
                             });
                             
-                            if (shouldUpload) {
-                                if (!hasFace) [weakSelf presentError:@"No face found"];
+                            if (shouldUpload || SERVER_REALTIME_DETECTION) {
+                                if (!hasFace) {
+                                    if (!SERVER_REALTIME_DETECTION) [weakSelf presentError:@"No face found"];
+                                }
                                 else [weakSelf uploadCIImage:ciImage inBoundingBox:faceBoundingBox];
                             }
                         }
@@ -261,15 +270,17 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
 
 - (void)uploadCIImage:(CIImage *)ciImage
         inBoundingBox:(CGRect)boundingBox {
+    // the face part should be cropped down and mirrored
     CIImage *faceImage = [ciImage imageByCroppingToRect:boundingBox];
+    CIImage *faceImageMirrored = [faceImage imageByApplyingTransform:CGAffineTransformMakeScale(-1, 1)];
     CGSize scaleImageToScreen = CGSizeMake(_viewBoundsSize.width / ciImage.extent.size.width,
                                            _viewBoundsSize.height / ciImage.extent.size.height);
     
     // should convert CIImage to CGImage, and then to UIImage
     // otherwise UIImageJPEGRepresentation() will return nil
     CIContext *context = [[CIContext alloc] initWithOptions:nil];
-    CGImageRef cgImage = [context createCGImage:faceImage
-                                       fromRect:faceImage.extent];
+    CGImageRef cgImage = [context createCGImage:faceImageMirrored
+                                       fromRect:faceImageMirrored.extent];
     
     [_server sendData:UIImageJPEGRepresentation([UIImage imageWithCGImage:cgImage], 1.0)
       responseHandler:^(NSDictionary * _Nullable response, NSError * _Nullable error) {
@@ -279,14 +290,18 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
               if (response[@"landmarks"]) {
                   NSArray<NSArray<NSNumber *> *> *landmarks = response[@"landmarks"];
                   if (landmarks.class == NSNull.class) {
-                      [self presentError:@"Server found no face"];
+                      if (!SERVER_REALTIME_DETECTION) {
+                          [self presentError:@"Server found no face"];
+                      }
                   } else {
                       if (landmarks.count == 68) {
                           NSMutableArray *points = [[NSMutableArray alloc] initWithCapacity:68];
                           for (NSUInteger idx = 0; idx < 68; ++idx) {
                               points[idx] = [NSValue valueWithCGPoint:
-                                             CGPointMake(landmarks[idx][0].floatValue + boundingBox.origin.x,
-                                                         boundingBox.size.height - landmarks[idx][1].floatValue + boundingBox.origin.y)];
+                                             CGPointMake(boundingBox.size.width - landmarks[idx][0].floatValue
+                                                         + boundingBox.origin.x,
+                                                         boundingBox.size.height - landmarks[idx][1].floatValue
+                                                         + boundingBox.origin.y)];
                           }
                           [_serverLandmarksMap enumerateKeysAndObjectsUsingBlock:
                            ^(NSString * _Nonnull landmarkName,
