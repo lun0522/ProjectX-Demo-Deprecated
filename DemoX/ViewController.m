@@ -80,6 +80,13 @@ static const NSString *kContinueButtonTitle = @"Continue";
     _previewLayer.videoGravity = kCAGravityResizeAspectFill;
     _shouldStopToUpload = NO;
     
+    _selectPhotoButton.layer.cornerRadius = 8.0f;
+    _selectPhotoButton.layer.borderWidth = 1.0f;
+    _selectPhotoButton.layer.borderColor = _switchCameraButton.tintColor.CGColor;
+    [_selectPhotoButton addTarget:self
+                           action:@selector(tapSelectPhoto)
+                 forControlEvents:UIControlEventTouchDown];
+    
     _switchCameraButton.layer.cornerRadius = 8.0f;
     _switchCameraButton.layer.borderWidth = 1.0f;
     _switchCameraButton.layer.borderColor = _switchCameraButton.tintColor.CGColor;
@@ -117,6 +124,10 @@ static const NSString *kContinueButtonTitle = @"Continue";
 - (void)didReceiveMemoryWarning {
     [super didReceiveMemoryWarning];
     // Dispose of any resources that can be recreated.
+}
+
+- (void)tapSelectPhoto {
+    
 }
 
 - (void)setupSession {

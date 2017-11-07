@@ -16,6 +16,7 @@ static const float kFaceTrackingConfidenceThreshold = 0.9;
 @interface LocalDetector() {
     VNDetectFaceRectanglesRequest *_faceDetection;
     VNDetectFaceLandmarksRequest  *_faceLandmarksDetection;
+    VNFaceObservation *_lastObservation;
     VNTrackObjectRequest *_faceTracking;
     VNSequenceRequestHandler *_faceDetectionRequest;
     VNSequenceRequestHandler *_faceLandmarksRequest;
@@ -41,8 +42,8 @@ static const float kFaceTrackingConfidenceThreshold = 0.9;
     return self;
 }
 
-- (void)detectionErrorWithDescription:(NSString *)description
-                                 code:(NSUInteger)code {
+- (void)detectorErrorWithDescription:(NSString *)description
+                                code:(NSUInteger)code {
     NSLog(@"%@", [NSString stringWithFormat:@"[Detector] %@", description]);
     if (_resultHandler) {
         _resultHandler(nil, [NSError errorWithDomain:DMXErrorDomain
@@ -68,8 +69,9 @@ static const float kFaceTrackingConfidenceThreshold = 0.9;
     NSError *error;
     [_faceDetectionRequest performRequests:@[_faceDetection] onCIImage:image error:&error];
     if (error) {
-        [self detectionErrorWithDescription:[NSString stringWithFormat:@"Error in face detection: %@", error.localizedDescription]
-                                       code:DMXFaceDetectionError];
+        [self detectorErrorWithDescription:[NSString stringWithFormat:@"Error in face detection: %@",
+                                            error.localizedDescription]
+                                      code:DMXFaceDetectionError];
         return;
     }
     
@@ -91,21 +93,23 @@ static const float kFaceTrackingConfidenceThreshold = 0.9;
         CGRect faceBoundingBox = faceObservation.boundingBox;
         _didFindFaceCallback(YES, [self scaleRect:faceBoundingBox toSize:image.extent.size]);
         
-        NSArray *points = [NSArray arrayWithObjects:
-                           [NSValue valueWithCGPoint:CGPointMake(faceBoundingBox.origin.x,
-                                                                 faceBoundingBox.origin.y)],
-                           [NSValue valueWithCGPoint:CGPointMake(faceBoundingBox.origin.x + faceBoundingBox.size.width,
-                                                                 faceBoundingBox.origin.y)],
-                           [NSValue valueWithCGPoint:CGPointMake(faceBoundingBox.origin.x + faceBoundingBox.size.width,
-                                                                 faceBoundingBox.origin.y + faceBoundingBox.size.height)],
-                           [NSValue valueWithCGPoint:CGPointMake(faceBoundingBox.origin.x,
-                                                                 faceBoundingBox.origin.y + faceBoundingBox.size.height)],
-                           [NSValue valueWithCGPoint:CGPointMake(faceBoundingBox.origin.x,
-                                                                 faceBoundingBox.origin.y)],
-                           nil];
-        if (_resultHandler) _resultHandler(points, nil);
+        if (_resultHandler) {
+            NSArray *points = [NSArray arrayWithObjects:
+                               [NSValue valueWithCGPoint:CGPointMake(faceBoundingBox.origin.x,
+                                                                     faceBoundingBox.origin.y)],
+                               [NSValue valueWithCGPoint:CGPointMake(faceBoundingBox.origin.x + faceBoundingBox.size.width,
+                                                                     faceBoundingBox.origin.y)],
+                               [NSValue valueWithCGPoint:CGPointMake(faceBoundingBox.origin.x + faceBoundingBox.size.width,
+                                                                     faceBoundingBox.origin.y + faceBoundingBox.size.height)],
+                               [NSValue valueWithCGPoint:CGPointMake(faceBoundingBox.origin.x,
+                                                                     faceBoundingBox.origin.y + faceBoundingBox.size.height)],
+                               [NSValue valueWithCGPoint:CGPointMake(faceBoundingBox.origin.x,
+                                                                     faceBoundingBox.origin.y)],
+                               nil];
+            _resultHandler(points, nil);
+        }
         
-        _faceTracking = [[VNTrackObjectRequest alloc] initWithDetectedObjectObservation:faceObservation];
+        _lastObservation = faceObservation;
         _tracking = YES;
         
         _faceLandmarksDetection.inputFaceObservations = @[faceObservation];
@@ -116,16 +120,32 @@ static const float kFaceTrackingConfidenceThreshold = 0.9;
 }
 
 - (void)trackFaceInCIImage:(CIImage *)image {
+    // The default tracking level of VNTrackObjectRequest is VNRequestTrackingLevelFast,
+    // which results that the confidence can only be 0.0 or 1.0.
+    // For more precise control, it should be set to VNRequestTrackingLevelAccurate,
+    // so that the confidence floats between 0.0 and 1.0
+    _faceTracking = [[VNTrackObjectRequest alloc]
+                     initWithDetectedObjectObservation:_lastObservation
+                     completionHandler:^(VNRequest * _Nonnull request,
+                                         NSError * _Nullable error) {
+                         if (error) [self detectorErrorWithDescription:[NSString stringWithFormat:
+                                                                        @"Error in face tracking: %@",
+                                                                        error.localizedDescription]
+                                                                  code:DMXFaceTrackingError];
+                         else _lastObservation = request.results[0];
+                     }];
+    _faceTracking.trackingLevel = VNRequestTrackingLevelAccurate;
+    
     NSError *error;
     [_faceTrackingRequest performRequests:@[_faceTracking] onCIImage:image error:&error];
     if (error) {
-        [self detectionErrorWithDescription:[NSString stringWithFormat:@"Error in face tracking: %@", error.localizedDescription]
-                                       code:DMXFaceTrackingError];
+        [self detectorErrorWithDescription:[NSString stringWithFormat:@"Error in face tracking: %@",
+                                            error.localizedDescription]
+                                      code:DMXFaceTrackingError];
         return;
     }
     
     VNDetectedObjectObservation *faceObservation = _faceTracking.results[0];
-    // Confidence is either 0.0 or 1.0. Why?
     if (faceObservation.confidence < kFaceTrackingConfidenceThreshold) {
         _tracking = NO;
         [self detectFaceInCIImage:image];
@@ -139,8 +159,10 @@ static const float kFaceTrackingConfidenceThreshold = 0.9;
     NSError *error;
     [_faceLandmarksRequest performRequests:@[_faceLandmarksDetection] onCIImage:image error:&error];
     if (error) {
-        [self detectionErrorWithDescription:[NSString stringWithFormat:@"Error in landmarks detection: %@", error.localizedDescription]
-                                       code:DMXFaceLandmarksDetectionError];
+        [self detectorErrorWithDescription:[NSString stringWithFormat:
+                                            @"Error in landmarks detection: %@",
+                                            error.localizedDescription]
+                                      code:DMXFaceLandmarksDetectionError];
         return;
     }
     
