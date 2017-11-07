@@ -15,7 +15,9 @@ FOUNDATION_EXPORT NSString *const DMXErrorDomain;
 
 enum {
     DMXSendDataError = 1000,
-    DMXDetectionError,
+    DMXFaceDetectionError,
+    DMXFaceLandmarksDetectionError,
+    DMXFaceTrackingError,
 };
 
 #endif /* DMXError_h */

@@ -11,13 +11,18 @@
 #import "DMXError.h"
 #import "LocalDetector.h"
 
+static const float kFaceTrackingConfidenceThreshold = 0.9;
+
 @interface LocalDetector() {
     VNDetectFaceRectanglesRequest *_faceDetection;
     VNDetectFaceLandmarksRequest  *_faceLandmarksDetection;
+    VNTrackObjectRequest *_faceTracking;
     VNSequenceRequestHandler *_faceDetectionRequest;
     VNSequenceRequestHandler *_faceLandmarksRequest;
+    VNSequenceRequestHandler *_faceTrackingRequest;
     LocalDetectorDidFindFaceCallback _didFindFaceCallback;
     FaceLandmarksDetectionResultHandler _resultHandler;
+    BOOL _tracking;
 }
 
 @end
@@ -30,15 +35,18 @@
         _faceLandmarksDetection = [[VNDetectFaceLandmarksRequest alloc] init];
         _faceDetectionRequest = [[VNSequenceRequestHandler alloc] init];
         _faceLandmarksRequest = [[VNSequenceRequestHandler alloc] init];
+        _faceTrackingRequest = [[VNSequenceRequestHandler alloc] init];
+        _tracking = NO;
     }
     return self;
 }
 
-- (void)detectionErrorWithDescription:(NSString *)description {
+- (void)detectionErrorWithDescription:(NSString *)description
+                                 code:(NSUInteger)code {
     NSLog(@"%@", [NSString stringWithFormat:@"[Detector] %@", description]);
     if (_resultHandler) {
         _resultHandler(nil, [NSError errorWithDomain:DMXErrorDomain
-                                                code:DMXDetectionError
+                                                code:code
                                             userInfo:@{NSLocalizedDescriptionKey: description}]);
         _resultHandler = nil;
     }
@@ -49,14 +57,19 @@
                        resultHandler:(FaceLandmarksDetectionResultHandler _Nullable)handler {
     _didFindFaceCallback = callback;
     _resultHandler = handler;
-    [self detectFaceInCIImage:image];
+    if (_tracking) {
+        _didFindFaceCallback(NO, (CGRect){});
+        [self trackFaceInCIImage:image];
+    }
+    else [self detectFaceInCIImage:image];
 }
 
 - (void)detectFaceInCIImage:(CIImage *)image {
     NSError *error;
     [_faceDetectionRequest performRequests:@[_faceDetection] onCIImage:image error:&error];
     if (error) {
-        [self detectionErrorWithDescription:[NSString stringWithFormat:@"Error in face detection: %@", error.localizedDescription]];
+        [self detectionErrorWithDescription:[NSString stringWithFormat:@"Error in face detection: %@", error.localizedDescription]
+                                       code:DMXFaceDetectionError];
         return;
     }
     
@@ -92,11 +105,33 @@
                            nil];
         if (_resultHandler) _resultHandler(points, nil);
         
-        VNFaceObservation *expandedFaceObservation = [VNFaceObservation observationWithBoundingBox:faceBoundingBox];
-        _faceLandmarksDetection.inputFaceObservations = @[expandedFaceObservation];
+        _faceTracking = [[VNTrackObjectRequest alloc] initWithDetectedObjectObservation:faceObservation];
+        _tracking = YES;
+        
+        _faceLandmarksDetection.inputFaceObservations = @[faceObservation];
         [self detectLandmarksInCIImage:image];
     } else {
         _didFindFaceCallback(NO, (CGRect){});
+    }
+}
+
+- (void)trackFaceInCIImage:(CIImage *)image {
+    NSError *error;
+    [_faceTrackingRequest performRequests:@[_faceTracking] onCIImage:image error:&error];
+    if (error) {
+        [self detectionErrorWithDescription:[NSString stringWithFormat:@"Error in face tracking: %@", error.localizedDescription]
+                                       code:DMXFaceTrackingError];
+        return;
+    }
+    
+    VNDetectedObjectObservation *faceObservation = _faceTracking.results[0];
+    // Confidence is either 0.0 or 1.0. Why?
+    if (faceObservation.confidence < kFaceTrackingConfidenceThreshold) {
+        _tracking = NO;
+        [self detectFaceInCIImage:image];
+    } else {
+        _faceLandmarksDetection.inputFaceObservations = @[[VNFaceObservation observationWithBoundingBox:faceObservation.boundingBox]];
+        [self detectLandmarksInCIImage:image];
     }
 }
 
@@ -104,7 +139,8 @@
     NSError *error;
     [_faceLandmarksRequest performRequests:@[_faceLandmarksDetection] onCIImage:image error:&error];
     if (error) {
-        [self detectionErrorWithDescription:[NSString stringWithFormat:@"Error in landmarks detection: %@", error.localizedDescription]];
+        [self detectionErrorWithDescription:[NSString stringWithFormat:@"Error in landmarks detection: %@", error.localizedDescription]
+                                       code:DMXFaceLandmarksDetectionError];
         return;
     }
     

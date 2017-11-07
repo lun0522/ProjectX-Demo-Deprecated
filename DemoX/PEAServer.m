@@ -154,7 +154,7 @@ static NSDictionary *kDlibLandmarksMap = nil;
     
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:_serverAddress]
                                                            cachePolicy:NSURLRequestReloadIgnoringCacheData
-                                                       timeoutInterval:10];
+                                                       timeoutInterval:300];
     
     [request setHTTPMethod:@"POST"];
     [request setHTTPBody:data];

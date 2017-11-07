@@ -13,8 +13,6 @@
 #import "DMXError.h"
 #import "ViewController.h"
 
-#define SERVER_REALTIME_DETECTION 0
-
 static const NSString *kDefaultServerAddress = @"192.168.0.7:8080";
 static const NSString *kUploadPhotoButtonTitle = @"Upload Photo";
 static const NSString *kContinueButtonTitle = @"Continue";
@@ -32,8 +30,9 @@ static const NSString *kContinueButtonTitle = @"Continue";
     CGSize _viewBoundsSize;
 }
 
+@property (weak, nonatomic) IBOutlet UIButton *selectPhotoButton;
+@property (weak, nonatomic) IBOutlet UIButton *captureFaceButton;
 @property (weak, nonatomic) IBOutlet UIButton *switchCameraButton;
-@property (weak, nonatomic) IBOutlet UIButton *uploadPhotoButton;
 
 @end
 
@@ -88,17 +87,12 @@ static const NSString *kContinueButtonTitle = @"Continue";
                             action:@selector(tapSwitchCamera)
                   forControlEvents:UIControlEventTouchDown];
     
-    _uploadPhotoButton.layer.cornerRadius = 8.0f;
-    _uploadPhotoButton.layer.borderWidth = 1.0f;
-    _uploadPhotoButton.layer.borderColor = _uploadPhotoButton.tintColor.CGColor;
-    [_uploadPhotoButton addTarget:self
+    _captureFaceButton.layer.cornerRadius = 8.0f;
+    _captureFaceButton.layer.borderWidth = 1.0f;
+    _captureFaceButton.layer.borderColor = _captureFaceButton.tintColor.CGColor;
+    [_captureFaceButton addTarget:self
                            action:@selector(tapUploadPhoto)
                  forControlEvents:UIControlEventTouchDown];
-    
-    if (SERVER_REALTIME_DETECTION) {
-        _uploadPhotoButton.hidden = YES;
-        _uploadPhotoButton.userInteractionEnabled = NO;
-    }
 }
 
 - (void)viewDidLayoutSubviews {
@@ -180,10 +174,8 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
                                     [layer removeFromSuperlayer];
                             });
                             
-                            if (shouldUpload || SERVER_REALTIME_DETECTION) {
-                                if (!hasFace) {
-                                    if (!SERVER_REALTIME_DETECTION) [weakSelf presentError:@"No face found"];
-                                }
+                            if (shouldUpload) {
+                                if (!hasFace) [weakSelf presentError:@"No face found"];
                                 else [weakSelf uploadCIImage:ciImage inBoundingBox:faceBoundingBox];
                             }
                         }
@@ -239,7 +231,7 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
     [_session stopRunning];
     
     dispatch_async(dispatch_get_main_queue(), ^{
-        [self setButton:_uploadPhotoButton
+        [self setButton:_captureFaceButton
               withTitle:kContinueButtonTitle.copy
               newTarget:@selector(tapContinue)];
     });
@@ -254,7 +246,7 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
     [_session startRunning];
     
     dispatch_async(dispatch_get_main_queue(), ^{
-        [self setButton:_uploadPhotoButton
+        [self setButton:_captureFaceButton
               withTitle:kUploadPhotoButtonTitle.copy
               newTarget:@selector(tapUploadPhoto)];
     });
@@ -287,13 +279,14 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
           if (error) {
               [self presentError:error.localizedDescription];
           } else {
-              if (response[@"landmarks"]) {
+              if (response[@"stylized"]) {
+                  NSData *imageData = [[NSData alloc]initWithBase64EncodedString:response[@"stylized"]
+                                                                         options:NSDataBase64DecodingIgnoreUnknownCharacters];
+                  [self displayStylizedImage:[UIImage imageWithData:imageData]];
+              } else if (response[@"landmarks"]) {
                   NSArray<NSArray<NSNumber *> *> *landmarks = response[@"landmarks"];
-                  if (landmarks.class == NSNull.class) {
-                      if (!SERVER_REALTIME_DETECTION) {
-                          [self presentError:@"Server found no face"];
-                      }
-                  } else {
+                  if (landmarks.class == NSNull.class) [self presentError:@"Server found no face"];
+                  else {
                       if (landmarks.count == 68) {
                           NSMutableArray *points = [[NSMutableArray alloc] initWithCapacity:68];
                           for (NSUInteger idx = 0; idx < 68; ++idx) {
@@ -319,6 +312,10 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
               }
           }
       }];
+}
+
+- (void)displayStylizedImage:(UIImage *)image {
+    
 }
 
 - (void)drawLineFromPoints:(const NSArray<NSValue *> *)points
