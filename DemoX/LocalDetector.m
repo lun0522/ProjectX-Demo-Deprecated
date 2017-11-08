@@ -11,8 +11,6 @@
 #import "DMXError.h"
 #import "LocalDetector.h"
 
-static const float kFaceTrackingConfidenceThreshold = 0.9;
-
 @interface LocalDetector() {
     VNDetectFaceRectanglesRequest *_faceDetection;
     VNDetectFaceLandmarksRequest  *_faceLandmarksDetection;
@@ -36,7 +34,6 @@ static const float kFaceTrackingConfidenceThreshold = 0.9;
         _faceLandmarksDetection = [[VNDetectFaceLandmarksRequest alloc] init];
         _faceDetectionRequest = [[VNSequenceRequestHandler alloc] init];
         _faceLandmarksRequest = [[VNSequenceRequestHandler alloc] init];
-        _faceTrackingRequest = [[VNSequenceRequestHandler alloc] init];
         _tracking = NO;
     }
     return self;
@@ -48,20 +45,18 @@ static const float kFaceTrackingConfidenceThreshold = 0.9;
     if (_resultHandler) {
         _resultHandler(nil, [NSError errorWithDomain:DMXErrorDomain
                                                 code:code
-                                            userInfo:@{NSLocalizedDescriptionKey: description}]);
+                                            userInfo:@{NSLocalizedDescriptionKey:description}]);
         _resultHandler = nil;
     }
 }
 
 - (void)detectFaceLandmarksInCIImage:(CIImage * _Nonnull)image
+         trackingConfidenceThreshold:(float)threshold
                  didFindFaceCallback:(LocalDetectorDidFindFaceCallback _Nullable)callback
                        resultHandler:(FaceLandmarksDetectionResultHandler _Nullable)handler {
     _didFindFaceCallback = callback;
     _resultHandler = handler;
-    if (_tracking) {
-        _didFindFaceCallback(NO, (CGRect){});
-        [self trackFaceInCIImage:image];
-    }
+    if (_tracking) [self trackFaceInCIImage:image confidenceThreshold:threshold];
     else [self detectFaceInCIImage:image];
 }
 
@@ -109,6 +104,10 @@ static const float kFaceTrackingConfidenceThreshold = 0.9;
             _resultHandler(points, nil);
         }
         
+        // https://stackoverflow.com/a/46355234/7873124
+        // Re-instantiate the request handler after the first frame used for tracking changes,
+        // to avoid that Vision throws "Exceeded maximum allowed number of Trackers" error
+        _faceTrackingRequest = [[VNSequenceRequestHandler alloc] init];
         _lastObservation = faceObservation;
         _tracking = YES;
         
@@ -119,15 +118,15 @@ static const float kFaceTrackingConfidenceThreshold = 0.9;
     }
 }
 
-- (void)trackFaceInCIImage:(CIImage *)image {
+- (void)trackFaceInCIImage:(CIImage *)image
+       confidenceThreshold:(float)threshold {
     // The default tracking level of VNTrackObjectRequest is VNRequestTrackingLevelFast,
     // which results that the confidence can only be 0.0 or 1.0.
     // For more precise control, it should be set to VNRequestTrackingLevelAccurate,
     // so that the confidence floats between 0.0 and 1.0
     _faceTracking = [[VNTrackObjectRequest alloc]
                      initWithDetectedObjectObservation:_lastObservation
-                     completionHandler:^(VNRequest * _Nonnull request,
-                                         NSError * _Nullable error) {
+                     completionHandler:^(VNRequest * _Nonnull request, NSError * _Nullable error) {
                          if (error) [self detectorErrorWithDescription:[NSString stringWithFormat:
                                                                         @"Error in face tracking: %@",
                                                                         error.localizedDescription]
@@ -146,10 +145,13 @@ static const float kFaceTrackingConfidenceThreshold = 0.9;
     }
     
     VNDetectedObjectObservation *faceObservation = _faceTracking.results[0];
-    if (faceObservation.confidence < kFaceTrackingConfidenceThreshold) {
+    if (faceObservation.confidence < threshold) {
         _tracking = NO;
         [self detectFaceInCIImage:image];
     } else {
+        CGRect faceBoundingBox = faceObservation.boundingBox;
+        _didFindFaceCallback(YES, [self scaleRect:faceBoundingBox toSize:image.extent.size]);
+        
         _faceLandmarksDetection.inputFaceObservations = @[[VNFaceObservation observationWithBoundingBox:faceObservation.boundingBox]];
         [self detectLandmarksInCIImage:image];
     }

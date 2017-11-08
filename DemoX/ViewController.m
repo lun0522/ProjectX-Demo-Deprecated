@@ -16,18 +16,21 @@
 static const NSString *kDefaultServerAddress = @"192.168.0.7:8080";
 static const NSString *kUploadPhotoButtonTitle = @"Upload Photo";
 static const NSString *kContinueButtonTitle = @"Continue";
+static const float kTrackingConfidenceThreshold = 0.8;
 
-@interface ViewController () <AVCaptureVideoDataOutputSampleBufferDelegate, UITextFieldDelegate> {
+@interface ViewController () <AVCaptureVideoDataOutputSampleBufferDelegate, UITextFieldDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate> {
     AVCaptureSession *_session;
     CAShapeLayer *_shapeLayer;
     AVCaptureVideoPreviewLayer *_previewLayer;
     AVCaptureDevicePosition _currentCameraPosition;
+    UIImagePickerController *_imagePickerController;
     
     BOOL _shouldStopToUpload;
     LocalDetector *_detector;
     PEAServer *_server;
     NSDictionary *_serverLandmarksMap;
     CGSize _viewBoundsSize;
+    UIImage *_selectedPhoto;
 }
 
 @property (weak, nonatomic) IBOutlet UIButton *selectPhotoButton;
@@ -127,7 +130,44 @@ static const NSString *kContinueButtonTitle = @"Continue";
 }
 
 - (void)tapSelectPhoto {
-    
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:nil
+                                                                   message:nil
+                                                            preferredStyle:UIAlertControllerStyleActionSheet];
+    [alert addAction:[UIAlertAction actionWithTitle:@"From album"
+                                              style:UIAlertActionStyleDefault
+                                            handler:^(UIAlertAction * _Nonnull action) {
+                                                [self showImagePickerForSourceType:UIImagePickerControllerSourceTypePhotoLibrary];
+                                                [self sessionPauseRunning];
+                                            }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Take a photo"
+                                              style:UIAlertActionStyleDefault
+                                            handler:^(UIAlertAction * _Nonnull action) {
+                                                [self showImagePickerForSourceType:UIImagePickerControllerSourceTypeCamera];
+                                                [self sessionPauseRunning];
+                                            }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)showImagePickerForSourceType:(UIImagePickerControllerSourceType)sourceType {
+    _imagePickerController = [[UIImagePickerController alloc] init];
+    _imagePickerController.sourceType = sourceType;
+    _imagePickerController.delegate = self;
+    [self presentViewController:_imagePickerController animated:YES completion:nil];
+}
+
+- (void)imagePickerController:(UIImagePickerController *)picker
+didFinishPickingMediaWithInfo:(NSDictionary<NSString *,id> *)info {
+    _selectedPhoto = [info valueForKey:UIImagePickerControllerOriginalImage];
+    [self dismissViewControllerAnimated:YES completion:nil];
+    _imagePickerController = nil;
+    [self sessionContinueRunning];
+}
+
+- (void)imagePickerControllerDidCancel:(UIImagePickerController *)picker {
+    [self dismissViewControllerAnimated:YES completion:nil];
+    _imagePickerController = nil;
+    [self sessionContinueRunning];
 }
 
 - (void)setupSession {
@@ -179,6 +219,7 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
     
     __weak ViewController *weakSelf = self;
     [_detector detectFaceLandmarksInCIImage:ciImage
+                trackingConfidenceThreshold:kTrackingConfidenceThreshold
                         didFindFaceCallback:^(BOOL hasFace, CGRect faceBoundingBox) {
                             dispatch_async(dispatch_get_main_queue(), ^{
                                 for (CAShapeLayer *layer in [_shapeLayer.sublayers copy])
@@ -364,7 +405,7 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
 }
 
 - (void)viewControllerLog:(NSString *)content {
-    NSLog(@"%@", [NSString stringWithFormat:@"[viewController] %@", content]);
+    NSLog(@"%@", [NSString stringWithFormat:@"[ViewController] %@", content]);
 }
 
 @end
