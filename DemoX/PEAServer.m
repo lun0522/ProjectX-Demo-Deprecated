@@ -14,6 +14,7 @@ static const NSString *kServerType = @"_demox._tcp.";
 static const NSString *kServerDomain = @"local.";
 static const NSString *kClientAuthenticationString = @"PortableEmotionAnalysis";
 static NSDictionary *kDlibLandmarksMap = nil;
+static NSDictionary *kServerOperationDict = nil;
 
 @interface PEAServer () <NSNetServiceBrowserDelegate, NSNetServiceDelegate> {
     NSNetServiceBrowser *_netServiceBrowser;
@@ -38,6 +39,11 @@ static NSDictionary *kDlibLandmarksMap = nil;
                               @"outerLips"   : [NSValue valueWithRange:NSMakeRange(48,12)],
                               @"innerLips"   : [NSValue valueWithRange:NSMakeRange(60, 8)],
                               };
+        kServerOperationDict = @{
+                                 @(PEAServerStore)   : @"Store",
+                                 @(PEAServerDelete)  : @"Delete",
+                                 @(PEAServerTransfer): @"Transfer",
+                                 };
         if (address) {
             _serverAddress = address;
             [self serverLog:[NSString stringWithFormat:@"Use address: %@", _serverAddress]];
@@ -145,7 +151,10 @@ static NSDictionary *kDlibLandmarksMap = nil;
 }
 
 #pragma mark Send data to server
-- (void)sendData:(NSData * _Nonnull)data
+- (void)sendData:(NSData * _Nonnull)requestData
+ withHeaderField:(NSDictionary * _Nullable)headerField
+       operation:(PEAServerOperation)operation
+         timeout:(NSTimeInterval)timeout
  responseHandler:(PEAServerResponseHandler _Nonnull)responseHandler {
     if (!_serverAddress) {
         responseHandler(nil, [self sendDataErrorWithDescription:@"No server address found"]);
@@ -154,37 +163,44 @@ static NSDictionary *kDlibLandmarksMap = nil;
     
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:_serverAddress]
                                                            cachePolicy:NSURLRequestReloadIgnoringCacheData
-                                                       timeoutInterval:300];
+                                                       timeoutInterval:timeout];
     
-    [request setHTTPMethod:@"POST"];
-    [request setHTTPBody:data];
-    [request addValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
-    [request addValue:@"application/json" forHTTPHeaderField:@"Accept"];
-    [request setValue:[NSString stringWithFormat:@"%ld", data.length] forHTTPHeaderField:@"Content-Length"];
+    [request setHTTPMethod:operation == PEAServerDelete? @"DELETE": @"POST"];
+    [request setValue:kServerOperationDict[@(operation)] forHTTPHeaderField:@"Operation"];
     [request setValue:kClientAuthenticationString.copy forHTTPHeaderField:@"Authentication"];
+    [request setValue:[NSString stringWithFormat:@"%ld", requestData.length] forHTTPHeaderField:@"Content-Length"];
+    if (headerField)
+        [headerField enumerateKeysAndObjectsUsingBlock:^(NSString * _Nonnull field,
+                                                         NSString * _Nonnull value,
+                                                         BOOL * _Nonnull stop) {
+            [request setValue:value forHTTPHeaderField:field];
+        }];
     
-    NSURLSessionConfiguration *configuration = [NSURLSessionConfiguration defaultSessionConfiguration];
-    [configuration setTimeoutIntervalForRequest:10];
-    NSURLSession *urlSession = [NSURLSession sessionWithConfiguration:configuration];
+    NSURLSession *urlSession = [NSURLSession sessionWithConfiguration:[NSURLSessionConfiguration defaultSessionConfiguration]];
     NSURLSessionTask *task =
     [urlSession uploadTaskWithRequest:request
-                             fromData:data
+                             fromData:requestData
                     completionHandler:^(NSData * _Nullable data,
                                         NSURLResponse * _Nullable response,
                                         NSError * _Nullable error) {
                         if (error) {
                             responseHandler(nil, [self sendDataErrorWithDescription:
-                                                  [NSString stringWithFormat:@"Failed in uploading: %@", error.localizedDescription]]);
+                                                  [NSString stringWithFormat:@"Failed in sending data: %@", error.localizedDescription]]);
                         } else {
-                            NSError *error;
-                            NSDictionary *responseDict = [NSJSONSerialization JSONObjectWithData:data
-                                                                                         options:kNilOptions
-                                                                                           error:&error];
-                            if (error) {
+                            NSInteger statusCode = ((NSHTTPURLResponse *)response).statusCode;
+                            if (statusCode != 200) {
                                 responseHandler(nil, [self sendDataErrorWithDescription:
-                                                      [NSString stringWithFormat:@"Failed converting JSON to dictionary: %@", error.localizedDescription]]);
+                                                      [NSString stringWithFormat:@"Error in sending data: status code %ld", statusCode]]);
                             } else {
-                                responseHandler(responseDict, nil);
+                                NSError *jsonError;
+                                NSDictionary *responseDict = data.length?
+                                [NSJSONSerialization JSONObjectWithData:data
+                                                                options:kNilOptions
+                                                                  error:&jsonError]: nil;
+                                
+                                if (jsonError) responseHandler(nil, [self sendDataErrorWithDescription:
+                                                                     [NSString stringWithFormat:@"Failed converting JSON to dictionary: %@", jsonError.localizedDescription]]);
+                                else responseHandler(responseDict, nil);
                             }
                         }
                     }];

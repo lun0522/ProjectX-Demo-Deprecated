@@ -25,12 +25,13 @@ static const float kTrackingConfidenceThreshold = 0.8;
     AVCaptureDevicePosition _currentCameraPosition;
     UIImagePickerController *_imagePickerController;
     
-    BOOL _shouldStopToUpload;
+    BOOL _willTransfer;
     LocalDetector *_detector;
     PEAServer *_server;
     NSDictionary *_serverLandmarksMap;
     CGSize _viewBoundsSize;
     UIImage *_selectedPhoto;
+    NSString *_photoTimestamp;
 }
 
 @property (weak, nonatomic) IBOutlet UIButton *selectPhotoButton;
@@ -81,7 +82,7 @@ static const float kTrackingConfidenceThreshold = 0.8;
     _shapeLayer = [[CAShapeLayer alloc] init];
     _previewLayer = [AVCaptureVideoPreviewLayer layerWithSession:_session];
     _previewLayer.videoGravity = kCAGravityResizeAspectFill;
-    _shouldStopToUpload = NO;
+    _willTransfer = NO;
     
     _selectPhotoButton.layer.cornerRadius = 8.0f;
     _selectPhotoButton.layer.borderWidth = 1.0f;
@@ -101,7 +102,7 @@ static const float kTrackingConfidenceThreshold = 0.8;
     _captureFaceButton.layer.borderWidth = 1.0f;
     _captureFaceButton.layer.borderColor = _captureFaceButton.tintColor.CGColor;
     [_captureFaceButton addTarget:self
-                           action:@selector(tapUploadPhoto)
+                           action:@selector(tapCaptureFace)
                  forControlEvents:UIControlEventTouchDown];
 }
 
@@ -129,6 +130,22 @@ static const float kTrackingConfidenceThreshold = 0.8;
     // Dispose of any resources that can be recreated.
 }
 
+- (void)presentError:(NSString *)description {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Error"
+                                                                   message:description
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"OK"
+                                              style:UIAlertActionStyleCancel
+                                            handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)viewControllerLog:(NSString *)content {
+    NSLog(@"%@", [NSString stringWithFormat:@"[ViewController] %@", content]);
+}
+
+#pragma mark - Buttons methods
+
 - (void)tapSelectPhoto {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:nil
                                                                    message:nil
@@ -149,26 +166,46 @@ static const float kTrackingConfidenceThreshold = 0.8;
     [self presentViewController:alert animated:YES completion:nil];
 }
 
-- (void)showImagePickerForSourceType:(UIImagePickerControllerSourceType)sourceType {
-    _imagePickerController = [[UIImagePickerController alloc] init];
-    _imagePickerController.sourceType = sourceType;
-    _imagePickerController.delegate = self;
-    [self presentViewController:_imagePickerController animated:YES completion:nil];
+- (void)tapCaptureFace {
+    _willTransfer = YES;
 }
 
-- (void)imagePickerController:(UIImagePickerController *)picker
-didFinishPickingMediaWithInfo:(NSDictionary<NSString *,id> *)info {
-    _selectedPhoto = [info valueForKey:UIImagePickerControllerOriginalImage];
-    [self dismissViewControllerAnimated:YES completion:nil];
-    _imagePickerController = nil;
+- (void)tapContinue {
+    _willTransfer = NO;
     [self sessionContinueRunning];
 }
 
-- (void)imagePickerControllerDidCancel:(UIImagePickerController *)picker {
-    [self dismissViewControllerAnimated:YES completion:nil];
-    _imagePickerController = nil;
-    [self sessionContinueRunning];
+- (void)tapSwitchCamera {
+    if (_session) {
+        [_session beginConfiguration];
+        
+        AVCaptureInput *currentInput = _session.inputs[0];
+        AVCaptureDevice *newCamera = [self cameraWithPreviousPosition:((AVCaptureDeviceInput *)currentInput).device.position];
+        
+        [_session removeInput:currentInput];
+        NSError *error;
+        AVCaptureDeviceInput *newInput = [[AVCaptureDeviceInput alloc] initWithDevice:newCamera
+                                                                                error:&error];
+        if (error)
+            [self viewControllerLog:[NSString stringWithFormat:@"Cannot init device input: %@", error.localizedDescription]];
+        _currentCameraPosition = newCamera.position;
+        if ([_session canAddInput:newInput]) [_session addInput:newInput];
+        
+        [_session commitConfiguration];
+    } else {
+        [self viewControllerLog:@"No session!"];
+    }
 }
+
+- (void)setButton:(UIButton *)button
+        withTitle:(NSString *)title
+        newTarget:(SEL)sel {
+    [button setTitle:title forState:UIControlStateNormal];
+    [button removeTarget:self action:nil forControlEvents:UIControlEventTouchDown];
+    [button addTarget:self action:sel forControlEvents:UIControlEventTouchDown];
+}
+
+#pragma mark - AVCaptureSession
 
 - (void)setupSession {
     _session = [[AVCaptureSession alloc] init];
@@ -205,8 +242,8 @@ didFinishPickingMediaWithInfo:(NSDictionary<NSString *,id> *)info {
 - (void)captureOutput:(AVCaptureOutput *)output
 didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
        fromConnection:(AVCaptureConnection *)connection {
-    if (_shouldStopToUpload) [self sessionPauseRunning];
-    BOOL shouldUpload = _shouldStopToUpload;
+    if (_willTransfer) [self sessionPauseRunning];
+    BOOL doTransfer = _willTransfer;
     
     CVImageBufferRef pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
     CFDictionaryRef attachments = CMCopyDictionaryOfAttachments(kCFAllocatorDefault, sampleBuffer, kCMAttachmentMode_ShouldPropagate);
@@ -226,9 +263,10 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
                                     [layer removeFromSuperlayer];
                             });
                             
-                            if (shouldUpload) {
+                            if (doTransfer) {
                                 if (!hasFace) [weakSelf presentError:@"No face found"];
-                                else [weakSelf uploadCIImage:ciImage inBoundingBox:faceBoundingBox];
+                                else if (!_selectedPhoto) [weakSelf presentError:@"Please select a photo"];
+                                else [weakSelf transferWithCIImage:ciImage inBoundingBox:faceBoundingBox];
                             }
                         }
                               resultHandler:^(NSArray * _Nullable points, NSError * _Nullable error) {
@@ -240,26 +278,24 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
                         }];
 }
 
-- (void)tapSwitchCamera {
-    if (_session) {
-        [_session beginConfiguration];
-        
-        AVCaptureInput *currentInput = _session.inputs[0];
-        AVCaptureDevice *newCamera = [self cameraWithPreviousPosition:((AVCaptureDeviceInput *)currentInput).device.position];
-        
-        [_session removeInput:currentInput];
-        NSError *error;
-        AVCaptureDeviceInput *newInput = [[AVCaptureDeviceInput alloc] initWithDevice:newCamera
-                                                                                error:&error];
-        if (error)
-            [self viewControllerLog:[NSString stringWithFormat:@"Cannot init device input: %@", error.localizedDescription]];
-        _currentCameraPosition = newCamera.position;
-        if ([_session canAddInput:newInput]) [_session addInput:newInput];
-        
-        [_session commitConfiguration];
-    } else {
-        [self viewControllerLog:@"No session!"];
-    }
+- (void)sessionContinueRunning {
+    [_session startRunning];
+    
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self setButton:_captureFaceButton
+              withTitle:kUploadPhotoButtonTitle.copy
+              newTarget:@selector(tapCaptureFace)];
+    });
+}
+
+- (void)sessionPauseRunning {
+    [_session stopRunning];
+    
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self setButton:_captureFaceButton
+              withTitle:kContinueButtonTitle.copy
+              newTarget:@selector(tapContinue)];
+    });
 }
 
 - (AVCaptureDevice *)cameraWithPreviousPosition:(const AVCaptureDevicePosition)previousPosition {
@@ -275,45 +311,61 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
     }
 }
 
-- (void)tapUploadPhoto {
-    _shouldStopToUpload = YES;
+#pragma mark - Image picker
+
+- (void)showImagePickerForSourceType:(UIImagePickerControllerSourceType)sourceType {
+    _imagePickerController = [[UIImagePickerController alloc] init];
+    _imagePickerController.sourceType = sourceType;
+    _imagePickerController.delegate = self;
+    [self presentViewController:_imagePickerController animated:YES completion:nil];
 }
 
-- (void)sessionPauseRunning {
-    [_session stopRunning];
+- (void)imagePickerController:(UIImagePickerController *)picker
+didFinishPickingMediaWithInfo:(NSDictionary<NSString *,id> *)info {
+    [self dismissViewControllerAnimated:YES completion:nil];
+    _imagePickerController = nil;
+    [self sessionContinueRunning];
     
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [self setButton:_captureFaceButton
-              withTitle:kContinueButtonTitle.copy
-              newTarget:@selector(tapContinue)];
-    });
+    if (_photoTimestamp) [self deleteLastUploadedPhoto];
+    _selectedPhoto = info[UIImagePickerControllerOriginalImage];
+    _photoTimestamp = [NSString stringWithFormat:@"%lu", (NSUInteger)([[NSDate date] timeIntervalSince1970] * 1000)];
+    [self uploadSelectedPhoto];
 }
 
-- (void)tapContinue {
-    _shouldStopToUpload = NO;
+- (void)imagePickerControllerDidCancel:(UIImagePickerController *)picker {
+    [self dismissViewControllerAnimated:YES completion:nil];
+    _imagePickerController = nil;
     [self sessionContinueRunning];
 }
 
-- (void)sessionContinueRunning {
-    [_session startRunning];
-    
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [self setButton:_captureFaceButton
-              withTitle:kUploadPhotoButtonTitle.copy
-              newTarget:@selector(tapUploadPhoto)];
-    });
+#pragma mark - Upload / Download
+
+- (void)uploadSelectedPhoto {
+    [_server sendData:UIImageJPEGRepresentation(_selectedPhoto, 1.0)
+      withHeaderField:@{@"Timestamp": _photoTimestamp}
+            operation:PEAServerStore
+              timeout:30
+      responseHandler:^(NSDictionary * _Nullable response, NSError * _Nullable error) {
+          if (error) [self presentError:error.localizedDescription];
+          else [self viewControllerLog:@"Uploaded selected photo"];
+      }];
 }
 
-- (void)setButton:(UIButton *)button
-        withTitle:(NSString *)title
-        newTarget:(SEL)sel {
-    [button setTitle:title forState:UIControlStateNormal];
-    [button removeTarget:self action:nil forControlEvents:UIControlEventTouchDown];
-    [button addTarget:self action:sel forControlEvents:UIControlEventTouchDown];
+- (void)deleteLastUploadedPhoto {
+    // the request will be canceled immediately if no body data is appended,
+    // so pass an empty NSData here
+    [_server sendData:[[NSData alloc] init]
+      withHeaderField:@{@"Timestamp": _photoTimestamp}
+            operation:PEAServerDelete
+              timeout:10
+      responseHandler:^(NSDictionary * _Nullable response, NSError * _Nullable error) {
+          if (error) [self presentError:error.localizedDescription];
+          else [self viewControllerLog:@"Deleted the last uploaded photo"];
+      }];
 }
 
-- (void)uploadCIImage:(CIImage *)ciImage
-        inBoundingBox:(CGRect)boundingBox {
+- (void)transferWithCIImage:(CIImage *)ciImage
+              inBoundingBox:(CGRect)boundingBox {
     // the face part should be cropped down and mirrored
     CIImage *faceImage = [ciImage imageByCroppingToRect:boundingBox];
     CIImage *faceImageMirrored = [faceImage imageByApplyingTransform:CGAffineTransformMakeScale(-1, 1)];
@@ -327,16 +379,19 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
                                        fromRect:faceImageMirrored.extent];
     
     [_server sendData:UIImageJPEGRepresentation([UIImage imageWithCGImage:cgImage], 1.0)
+      withHeaderField:@{@"Timestamp": _photoTimestamp}
+            operation:PEAServerTransfer
+              timeout:120
       responseHandler:^(NSDictionary * _Nullable response, NSError * _Nullable error) {
           if (error) {
               [self presentError:error.localizedDescription];
           } else {
-              if (response[@"stylized"]) {
-                  NSData *imageData = [[NSData alloc]initWithBase64EncodedString:response[@"stylized"]
+              if (response[@"Stylized"]) {
+                  NSData *imageData = [[NSData alloc]initWithBase64EncodedString:response[@"Stylized"]
                                                                          options:NSDataBase64DecodingIgnoreUnknownCharacters];
                   [self displayStylizedImage:[UIImage imageWithData:imageData]];
-              } else if (response[@"landmarks"]) {
-                  NSArray<NSArray<NSNumber *> *> *landmarks = response[@"landmarks"];
+              } else if (response[@"Landmarks"]) {
+                  NSArray<NSArray<NSNumber *> *> *landmarks = response[@"Landmarks"];
                   if (landmarks.class == NSNull.class) [self presentError:@"Server found no face"];
                   else {
                       if (landmarks.count == 68) {
@@ -366,8 +421,10 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
       }];
 }
 
+#pragma mark - UI
+
 - (void)displayStylizedImage:(UIImage *)image {
-    
+    [self viewControllerLog:@"Received stylized image"];
 }
 
 - (void)drawLineFromPoints:(const NSArray<NSValue *> *)points
@@ -392,20 +449,6 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
     dispatch_async(dispatch_get_main_queue(), ^{
         [_shapeLayer addSublayer:newLayer];
     });
-}
-
-- (void)presentError:(NSString *)description {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Error"
-                                                                   message:description
-                                                            preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"OK"
-                                              style:UIAlertActionStyleCancel
-                                            handler:nil]];
-    [self presentViewController:alert animated:YES completion:nil];
-}
-
-- (void)viewControllerLog:(NSString *)content {
-    NSLog(@"%@", [NSString stringWithFormat:@"[ViewController] %@", content]);
 }
 
 @end

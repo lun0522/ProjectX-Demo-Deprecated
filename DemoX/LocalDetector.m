@@ -185,8 +185,8 @@
                                              @"outerLips"   : landmarks.outerLips,
                                              @"innerLips"   : landmarks.innerLips,
                                              };
-        [requestedLandmarks enumerateKeysAndObjectsUsingBlock:^(NSString *  _Nonnull landmarkName,
-                                                                VNFaceLandmarkRegion2D *  _Nonnull landmarkRegion,
+        [requestedLandmarks enumerateKeysAndObjectsUsingBlock:^(NSString * _Nonnull landmarkName,
+                                                                VNFaceLandmarkRegion2D * _Nonnull landmarkRegion,
                                                                 BOOL * _Nonnull stop) {
             if (landmarkRegion.pointCount) {
                 [self convertLandmarkPoints:landmarkRegion.normalizedPoints
