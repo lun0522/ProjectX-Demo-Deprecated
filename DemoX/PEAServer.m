@@ -192,15 +192,29 @@ static NSDictionary *kServerOperationDict = nil;
                                 responseHandler(nil, [self sendDataErrorWithDescription:
                                                       [NSString stringWithFormat:@"Error in sending data: status code %ld", statusCode]]);
                             } else {
-                                NSError *jsonError;
-                                NSDictionary *responseDict = data.length?
-                                [NSJSONSerialization JSONObjectWithData:data
-                                                                options:kNilOptions
-                                                                  error:&jsonError]: nil;
-                                
-                                if (jsonError) responseHandler(nil, [self sendDataErrorWithDescription:
-                                                                     [NSString stringWithFormat:@"Failed converting JSON to dictionary: %@", jsonError.localizedDescription]]);
-                                else responseHandler(responseDict, nil);
+                                NSString *contentType = ((NSHTTPURLResponse *)response).allHeaderFields[@"Content-Type"];
+                                if (contentType) {
+                                    if ([contentType isEqualToString:@"application/json"]) {
+                                        NSError *jsonError;
+                                        NSDictionary *responseDict = data.length?
+                                        [NSJSONSerialization JSONObjectWithData:data
+                                                                        options:kNilOptions
+                                                                          error:&jsonError]: nil;
+                                        
+                                        if (jsonError) responseHandler(nil, [self sendDataErrorWithDescription:
+                                                                             [NSString stringWithFormat:
+                                                                              @"Failed converting JSON to dictionary: %@",
+                                                                              jsonError.localizedDescription]]);
+                                        else responseHandler(responseDict, nil);
+                                    } else if ([contentType isEqualToString:@"application/octet-stream"]) {
+                                        NSDictionary *responseDict = data.length? @{@"binaryData": data}: nil;
+                                        responseHandler(responseDict, nil);
+                                    } else {
+                                        responseHandler(nil, [self sendDataErrorWithDescription:@"Unknown content type"]);
+                                    }
+                                } else {
+                                    responseHandler(nil, [self sendDataErrorWithDescription:@"Content type not specified"]);
+                                }
                             }
                         }
                     }];

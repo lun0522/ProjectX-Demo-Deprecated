@@ -14,8 +14,6 @@
 #import "ViewController.h"
 
 static const NSString *kDefaultServerAddress = @"192.168.0.7:8080";
-static const NSString *kUploadPhotoButtonTitle = @"Upload Photo";
-static const NSString *kContinueButtonTitle = @"Continue";
 static const float kTrackingConfidenceThreshold = 0.8;
 
 @interface ViewController () <AVCaptureVideoDataOutputSampleBufferDelegate, UITextFieldDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate> {
@@ -24,12 +22,13 @@ static const float kTrackingConfidenceThreshold = 0.8;
     AVCaptureVideoPreviewLayer *_previewLayer;
     AVCaptureDevicePosition _currentCameraPosition;
     UIImagePickerController *_imagePickerController;
+    UIVisualEffectView *_blurEffectView;
+    UIActivityIndicatorView *_transferIndicator;
     
     BOOL _willTransfer;
+    CGSize _viewBoundsSize;
     LocalDetector *_detector;
     PEAServer *_server;
-    NSDictionary *_serverLandmarksMap;
-    CGSize _viewBoundsSize;
     UIImage *_selectedPhoto;
     NSString *_photoTimestamp;
 }
@@ -45,65 +44,15 @@ static const float kTrackingConfidenceThreshold = 0.8;
 - (void)viewDidLoad {
     [super viewDidLoad];
     
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Please input server address"
-                                                                   message:nil
-                                                            preferredStyle:UIAlertControllerStyleAlert];
-    [alert addTextFieldWithConfigurationHandler:^(UITextField * _Nonnull textField) {
-        textField.placeholder = [NSString stringWithFormat:@"Default %@", kDefaultServerAddress.copy];
-        textField.delegate = self;
-        textField.textAlignment = NSTextAlignmentCenter;
-    }];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Confirm"
-                                              style:UIAlertActionStyleDestructive
-                                            handler:^(UIAlertAction * _Nonnull action) {
-                                                _server = [PEAServer serverWithAddress:[NSString stringWithFormat:@"http://%@", alert.textFields[0].text]];
-                                                _serverLandmarksMap = [_server getLandmarksMap];
-                                            }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Use default address"
-                                              style:UIAlertActionStyleDefault
-                                            handler:^(UIAlertAction * _Nonnull action) {
-                                                _server = [PEAServer serverWithAddress:[NSString stringWithFormat:@"http://%@", kDefaultServerAddress.copy]];
-                                                _serverLandmarksMap = [_server getLandmarksMap];
-                                            }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Search in LAN"
-                                              style:UIAlertActionStyleDefault
-                                            handler:^(UIAlertAction * _Nonnull action) {
-                                                _server = [PEAServer serverWithAddress:nil];
-                                                _serverLandmarksMap = [_server getLandmarksMap];
-                                            }]];
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [self presentViewController:alert animated:YES completion:nil];
-        
-        _detector = [[LocalDetector alloc] init];
-        _viewBoundsSize = self.view.bounds.size;
-    });
+    [self requestServerAddress];
+    
+    _willTransfer = NO;
+    _viewBoundsSize = self.view.bounds.size;
+    _detector = [[LocalDetector alloc] init];
     
     [self setupSession];
-    _shapeLayer = [[CAShapeLayer alloc] init];
-    _previewLayer = [AVCaptureVideoPreviewLayer layerWithSession:_session];
-    _previewLayer.videoGravity = kCAGravityResizeAspectFill;
-    _willTransfer = NO;
-    
-    _selectPhotoButton.layer.cornerRadius = 8.0f;
-    _selectPhotoButton.layer.borderWidth = 1.0f;
-    _selectPhotoButton.layer.borderColor = _switchCameraButton.tintColor.CGColor;
-    [_selectPhotoButton addTarget:self
-                           action:@selector(tapSelectPhoto)
-                 forControlEvents:UIControlEventTouchDown];
-    
-    _switchCameraButton.layer.cornerRadius = 8.0f;
-    _switchCameraButton.layer.borderWidth = 1.0f;
-    _switchCameraButton.layer.borderColor = _switchCameraButton.tintColor.CGColor;
-    [_switchCameraButton addTarget:self
-                            action:@selector(tapSwitchCamera)
-                  forControlEvents:UIControlEventTouchDown];
-    
-    _captureFaceButton.layer.cornerRadius = 8.0f;
-    _captureFaceButton.layer.borderWidth = 1.0f;
-    _captureFaceButton.layer.borderColor = _captureFaceButton.tintColor.CGColor;
-    [_captureFaceButton addTarget:self
-                           action:@selector(tapCaptureFace)
-                 forControlEvents:UIControlEventTouchDown];
+    [self setupVisibles];
+    [self setupButtons];
 }
 
 - (void)viewDidLayoutSubviews {
@@ -130,18 +79,76 @@ static const float kTrackingConfidenceThreshold = 0.8;
     // Dispose of any resources that can be recreated.
 }
 
-- (void)presentError:(NSString *)description {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Error"
-                                                                   message:description
-                                                            preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"OK"
-                                              style:UIAlertActionStyleCancel
-                                            handler:nil]];
-    [self presentViewController:alert animated:YES completion:nil];
-}
-
 - (void)viewControllerLog:(NSString *)content {
     NSLog(@"%@", [NSString stringWithFormat:@"[ViewController] %@", content]);
+}
+
+#pragma mark - Setup
+
+- (void)requestServerAddress {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Please input server address"
+                                                                   message:nil
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    [alert addTextFieldWithConfigurationHandler:^(UITextField * _Nonnull textField) {
+        textField.placeholder = [NSString stringWithFormat:@"Default %@", kDefaultServerAddress.copy];
+        textField.delegate = self;
+        textField.textAlignment = NSTextAlignmentCenter;
+    }];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Confirm"
+                                              style:UIAlertActionStyleDestructive
+                                            handler:^(UIAlertAction * _Nonnull action) {
+                                                _server = [PEAServer serverWithAddress:[NSString stringWithFormat:@"http://%@", alert.textFields[0].text]];
+                                            }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Use default address"
+                                              style:UIAlertActionStyleDefault
+                                            handler:^(UIAlertAction * _Nonnull action) {
+                                                _server = [PEAServer serverWithAddress:[NSString stringWithFormat:@"http://%@", kDefaultServerAddress.copy]];
+                                            }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Search in LAN"
+                                              style:UIAlertActionStyleDefault
+                                            handler:^(UIAlertAction * _Nonnull action) {
+                                                _server = [PEAServer serverWithAddress:nil];
+                                            }]];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self presentViewController:alert animated:YES completion:nil];
+    });
+}
+
+- (void)setupVisibles {
+    _shapeLayer = [[CAShapeLayer alloc] init];
+    
+    _previewLayer = [AVCaptureVideoPreviewLayer layerWithSession:_session];
+    _previewLayer.videoGravity = kCAGravityResizeAspectFill;
+    
+    _blurEffectView = [[UIVisualEffectView alloc] init];
+    _blurEffectView.frame = self.view.frame;
+    
+    _transferIndicator = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleWhiteLarge];
+    _transferIndicator.center = CGPointMake(self.view.center.x, self.view.center.y);
+    _transferIndicator.hidesWhenStopped = YES;
+}
+
+- (void)setupButtons {
+    _selectPhotoButton.layer.cornerRadius = 8.0f;
+    _selectPhotoButton.layer.borderWidth = 1.0f;
+    _selectPhotoButton.layer.borderColor = _switchCameraButton.tintColor.CGColor;
+    [_selectPhotoButton addTarget:self
+                           action:@selector(tapSelectPhoto)
+                 forControlEvents:UIControlEventTouchDown];
+    
+    _switchCameraButton.layer.cornerRadius = 8.0f;
+    _switchCameraButton.layer.borderWidth = 1.0f;
+    _switchCameraButton.layer.borderColor = _switchCameraButton.tintColor.CGColor;
+    [_switchCameraButton addTarget:self
+                            action:@selector(tapSwitchCamera)
+                  forControlEvents:UIControlEventTouchDown];
+    
+    _captureFaceButton.layer.cornerRadius = 8.0f;
+    _captureFaceButton.layer.borderWidth = 1.0f;
+    _captureFaceButton.layer.borderColor = _captureFaceButton.tintColor.CGColor;
+    [_captureFaceButton addTarget:self
+                           action:@selector(tapCaptureFace)
+                 forControlEvents:UIControlEventTouchDown];
 }
 
 #pragma mark - Buttons methods
@@ -154,25 +161,23 @@ static const float kTrackingConfidenceThreshold = 0.8;
                                               style:UIAlertActionStyleDefault
                                             handler:^(UIAlertAction * _Nonnull action) {
                                                 [self showImagePickerForSourceType:UIImagePickerControllerSourceTypePhotoLibrary];
-                                                [self sessionPauseRunning];
+                                                [_session stopRunning];
                                             }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Take a photo"
                                               style:UIAlertActionStyleDefault
                                             handler:^(UIAlertAction * _Nonnull action) {
                                                 [self showImagePickerForSourceType:UIImagePickerControllerSourceTypeCamera];
-                                                [self sessionPauseRunning];
+                                                [_session stopRunning];
                                             }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
-    [self presentViewController:alert animated:YES completion:nil];
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self presentViewController:alert animated:YES completion:nil];
+    });
 }
 
 - (void)tapCaptureFace {
     _willTransfer = YES;
-}
-
-- (void)tapContinue {
-    _willTransfer = NO;
-    [self sessionContinueRunning];
 }
 
 - (void)tapSwitchCamera {
@@ -242,7 +247,7 @@ static const float kTrackingConfidenceThreshold = 0.8;
 - (void)captureOutput:(AVCaptureOutput *)output
 didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
        fromConnection:(AVCaptureConnection *)connection {
-    if (_willTransfer) [self sessionPauseRunning];
+    if (_willTransfer) [_session stopRunning];
     BOOL doTransfer = _willTransfer;
     
     CVImageBufferRef pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
@@ -267,6 +272,9 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
                                 if (!hasFace) [weakSelf presentError:@"No face found"];
                                 else if (!_selectedPhoto) [weakSelf presentError:@"Please select a photo"];
                                 else [weakSelf transferWithCIImage:ciImage inBoundingBox:faceBoundingBox];
+                                
+                                _willTransfer = NO;
+                                if (!hasFace || !_selectedPhoto) [_session startRunning];
                             }
                         }
                               resultHandler:^(NSArray * _Nullable points, NSError * _Nullable error) {
@@ -276,26 +284,6 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
                                                           withColor:UIColor.redColor.CGColor
                                                               scale:_viewBoundsSize];
                         }];
-}
-
-- (void)sessionContinueRunning {
-    [_session startRunning];
-    
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [self setButton:_captureFaceButton
-              withTitle:kUploadPhotoButtonTitle.copy
-              newTarget:@selector(tapCaptureFace)];
-    });
-}
-
-- (void)sessionPauseRunning {
-    [_session stopRunning];
-    
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [self setButton:_captureFaceButton
-              withTitle:kContinueButtonTitle.copy
-              newTarget:@selector(tapContinue)];
-    });
 }
 
 - (AVCaptureDevice *)cameraWithPreviousPosition:(const AVCaptureDevicePosition)previousPosition {
@@ -317,17 +305,27 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
     _imagePickerController = [[UIImagePickerController alloc] init];
     _imagePickerController.sourceType = sourceType;
     _imagePickerController.delegate = self;
-    [self presentViewController:_imagePickerController animated:YES completion:nil];
+    
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self presentViewController:_imagePickerController animated:YES completion:nil];
+    });
 }
 
 - (void)imagePickerController:(UIImagePickerController *)picker
 didFinishPickingMediaWithInfo:(NSDictionary<NSString *,id> *)info {
     [self dismissViewControllerAnimated:YES completion:nil];
     _imagePickerController = nil;
-    [self sessionContinueRunning];
+    [_session startRunning];
     
     if (_photoTimestamp) [self deleteLastUploadedPhoto];
     _selectedPhoto = info[UIImagePickerControllerOriginalImage];
+    
+    // rotate the retrieved image
+    UIGraphicsBeginImageContextWithOptions(_selectedPhoto.size, NO, _selectedPhoto.scale);
+    [_selectedPhoto drawInRect:(CGRect){0, 0, _selectedPhoto.size}];
+    _selectedPhoto = UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+    
     _photoTimestamp = [NSString stringWithFormat:@"%lu", (NSUInteger)([[NSDate date] timeIntervalSince1970] * 1000)];
     [self uploadSelectedPhoto];
 }
@@ -335,7 +333,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<NSString *,id> *)info {
 - (void)imagePickerControllerDidCancel:(UIImagePickerController *)picker {
     [self dismissViewControllerAnimated:YES completion:nil];
     _imagePickerController = nil;
-    [self sessionContinueRunning];
+    [_session startRunning];
 }
 
 #pragma mark - Upload / Download
@@ -352,7 +350,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<NSString *,id> *)info {
 }
 
 - (void)deleteLastUploadedPhoto {
-    // the request will be canceled immediately if no body data is appended,
+    // the request will be cancelled immediately if no body data is appended,
     // so pass an empty NSData here
     [_server sendData:[[NSData alloc] init]
       withHeaderField:@{@"Timestamp": _photoTimestamp}
@@ -366,11 +364,11 @@ didFinishPickingMediaWithInfo:(NSDictionary<NSString *,id> *)info {
 
 - (void)transferWithCIImage:(CIImage *)ciImage
               inBoundingBox:(CGRect)boundingBox {
+    [self onProcessingAnimation];
+    
     // the face part should be cropped down and mirrored
     CIImage *faceImage = [ciImage imageByCroppingToRect:boundingBox];
     CIImage *faceImageMirrored = [faceImage imageByApplyingTransform:CGAffineTransformMakeScale(-1, 1)];
-    CGSize scaleImageToScreen = CGSizeMake(_viewBoundsSize.width / ciImage.extent.size.width,
-                                           _viewBoundsSize.height / ciImage.extent.size.height);
     
     // should convert CIImage to CGImage, and then to UIImage
     // otherwise UIImageJPEGRepresentation() will return nil
@@ -383,49 +381,18 @@ didFinishPickingMediaWithInfo:(NSDictionary<NSString *,id> *)info {
             operation:PEAServerTransfer
               timeout:120
       responseHandler:^(NSDictionary * _Nullable response, NSError * _Nullable error) {
-          if (error) {
-              [self presentError:error.localizedDescription];
-          } else {
-              if (response[@"Stylized"]) {
-                  NSData *imageData = [[NSData alloc]initWithBase64EncodedString:response[@"Stylized"]
-                                                                         options:NSDataBase64DecodingIgnoreUnknownCharacters];
-                  [self displayStylizedImage:[UIImage imageWithData:imageData]];
-              } else if (response[@"Landmarks"]) {
-                  NSArray<NSArray<NSNumber *> *> *landmarks = response[@"Landmarks"];
-                  if (landmarks.class == NSNull.class) [self presentError:@"Server found no face"];
-                  else {
-                      if (landmarks.count == 68) {
-                          NSMutableArray *points = [[NSMutableArray alloc] initWithCapacity:68];
-                          for (NSUInteger idx = 0; idx < 68; ++idx) {
-                              points[idx] = [NSValue valueWithCGPoint:
-                                             CGPointMake(boundingBox.size.width - landmarks[idx][0].floatValue
-                                                         + boundingBox.origin.x,
-                                                         boundingBox.size.height - landmarks[idx][1].floatValue
-                                                         + boundingBox.origin.y)];
-                          }
-                          [_serverLandmarksMap enumerateKeysAndObjectsUsingBlock:
-                           ^(NSString * _Nonnull landmarkName,
-                             NSValue * _Nonnull range,
-                             BOOL * _Nonnull stop) {
-                               [self drawLineFromPoints:points
-                                                inRange:[range rangeValue]
-                                              withColor:UIColor.blueColor.CGColor
-                                                  scale:scaleImageToScreen];
-                           }];
-                      } else {
-                          [self viewControllerLog:@"Less than 68 points returned by server"];
-                      }
-                  }
+          [self endProcessingAnimationWithCompletionHandler:^{
+              if (error) {
+                  [self presentError:error.localizedDescription];
+              } else if (response[@"binaryData"]) {
+                  [self viewControllerLog:@"Received stylized image"];
+                  [self displayStylizedImage:[UIImage imageWithData:response[@"binaryData"]]];
               }
-          }
+          }];
       }];
 }
 
 #pragma mark - UI
-
-- (void)displayStylizedImage:(UIImage *)image {
-    [self viewControllerLog:@"Received stylized image"];
-}
 
 - (void)drawLineFromPoints:(const NSArray<NSValue *> *)points
                    inRange:(const NSRange)range
@@ -448,6 +415,72 @@ didFinishPickingMediaWithInfo:(NSDictionary<NSString *,id> *)info {
     
     dispatch_async(dispatch_get_main_queue(), ^{
         [_shapeLayer addSublayer:newLayer];
+    });
+}
+
+- (void)onProcessingAnimation {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [_transferIndicator startAnimating];
+        [self.view addSubview:_blurEffectView];
+        
+        [UIView animateWithDuration:0.3 animations:^{
+            _blurEffectView.effect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleDark];
+        } completion:^(BOOL finished) {
+            [self.view addSubview:_transferIndicator];
+        }];
+    });
+}
+
+- (void)endProcessingAnimationWithCompletionHandler:(void (^)(void))handler {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [_transferIndicator stopAnimating];
+        [_transferIndicator removeFromSuperview];
+        
+        [UIView animateWithDuration:0.3 animations:^{
+            _blurEffectView.effect = nil;
+        } completion:^(BOOL finished) {
+            [_blurEffectView removeFromSuperview];
+            handler();
+        }];
+    });
+}
+
+- (void)displayStylizedImage:(UIImage *)image {
+    CGSize newSize = CGSizeMake(245.0, 245.0 * image.size.height / image.size.width);
+    UIGraphicsBeginImageContextWithOptions(newSize, NO, 0.0);
+    [image drawInRect:CGRectMake(0, 0, newSize.width, newSize.height)];
+    UIImage *resizedImage = UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+    
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:nil
+                                                                   message:nil
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertAction *imagePlaceholder = [UIAlertAction actionWithTitle:@"placeholder"
+                                                               style:UIAlertActionStyleDefault
+                                                             handler:nil];
+    [imagePlaceholder setValue:[resizedImage imageWithRenderingMode:UIImageRenderingModeAlwaysOriginal] forKey:@"image"];
+    [imagePlaceholder setEnabled:NO];
+    [alert addAction:imagePlaceholder];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Great"
+                                              style:UIAlertActionStyleDefault
+                                            handler:^(UIAlertAction * _Nonnull action) {
+                                                [alert dismissViewControllerAnimated:YES completion:nil];
+                                                [_session startRunning];
+                                            }]];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self presentViewController:alert animated:YES completion:nil];
+    });
+}
+
+- (void)presentError:(NSString *)description {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Error"
+                                                                   message:description
+                                                            preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"OK"
+                                              style:UIAlertActionStyleCancel
+                                            handler:nil]];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self presentViewController:alert animated:YES completion:nil];
     });
 }
 
