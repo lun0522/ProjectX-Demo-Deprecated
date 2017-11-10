@@ -85,24 +85,8 @@
             faceObservation = sortedObservations[0];
         }
         
-        CGRect faceBoundingBox = faceObservation.boundingBox;
-        _didFindFaceCallback(YES, [self scaleRect:faceBoundingBox toSize:image.extent.size]);
-        
-        if (_resultHandler) {
-            NSArray *points = [NSArray arrayWithObjects:
-                               [NSValue valueWithCGPoint:CGPointMake(faceBoundingBox.origin.x,
-                                                                     faceBoundingBox.origin.y)],
-                               [NSValue valueWithCGPoint:CGPointMake(faceBoundingBox.origin.x + faceBoundingBox.size.width,
-                                                                     faceBoundingBox.origin.y)],
-                               [NSValue valueWithCGPoint:CGPointMake(faceBoundingBox.origin.x + faceBoundingBox.size.width,
-                                                                     faceBoundingBox.origin.y + faceBoundingBox.size.height)],
-                               [NSValue valueWithCGPoint:CGPointMake(faceBoundingBox.origin.x,
-                                                                     faceBoundingBox.origin.y + faceBoundingBox.size.height)],
-                               [NSValue valueWithCGPoint:CGPointMake(faceBoundingBox.origin.x,
-                                                                     faceBoundingBox.origin.y)],
-                               nil];
-            _resultHandler(points, nil);
-        }
+        _faceLandmarksDetection.inputFaceObservations = @[faceObservation];
+        [self detectLandmarksInCIImage:image];
         
         // https://stackoverflow.com/a/46355234/7873124
         // Re-instantiate the request handler after the first frame used for tracking changes,
@@ -110,9 +94,6 @@
         _faceTrackingRequest = [[VNSequenceRequestHandler alloc] init];
         _lastObservation = faceObservation;
         _tracking = YES;
-        
-        _faceLandmarksDetection.inputFaceObservations = @[faceObservation];
-        [self detectLandmarksInCIImage:image];
     } else {
         _didFindFaceCallback(NO, (CGRect){});
     }
@@ -149,9 +130,6 @@
         _tracking = NO;
         [self detectFaceInCIImage:image];
     } else {
-        CGRect faceBoundingBox = faceObservation.boundingBox;
-        _didFindFaceCallback(YES, [self scaleRect:faceBoundingBox toSize:image.extent.size]);
-        
         _faceLandmarksDetection.inputFaceObservations = @[[VNFaceObservation observationWithBoundingBox:faceObservation.boundingBox]];
         [self detectLandmarksInCIImage:image];
     }
@@ -168,46 +146,37 @@
         return;
     }
     
-    [_faceLandmarksDetection.results enumerateObjectsUsingBlock:^(VNFaceObservation * _Nonnull face,
-                                                                  NSUInteger idx,
-                                                                  BOOL * _Nonnull stop) {
-        CGRect boundingBox = ((VNFaceObservation *)_faceLandmarksDetection.inputFaceObservations[idx]).boundingBox;
-        
-        VNFaceLandmarks2D *landmarks = face.landmarks;
-        NSDictionary *requestedLandmarks = @{
-                                             @"faceContour" : landmarks.faceContour,
-                                             @"leftEyebrow" : landmarks.leftEyebrow,
-                                             @"rightEyebrow": landmarks.rightEyebrow,
-                                             @"noseCrest"   : landmarks.noseCrest,
-                                             @"nose"        : landmarks.nose,
-                                             @"leftEye"     : landmarks.leftEye,
-                                             @"rightEye"    : landmarks.rightEye,
-                                             @"outerLips"   : landmarks.outerLips,
-                                             @"innerLips"   : landmarks.innerLips,
-                                             };
-        [requestedLandmarks enumerateKeysAndObjectsUsingBlock:^(NSString * _Nonnull landmarkName,
-                                                                VNFaceLandmarkRegion2D * _Nonnull landmarkRegion,
-                                                                BOOL * _Nonnull stop) {
-            if (landmarkRegion.pointCount) {
-                [self convertLandmarkPoints:landmarkRegion.normalizedPoints
-                             withPointCount:landmarkRegion.pointCount
-                       forFaceInBoundingBox:boundingBox];
-            }
-        }];
+    VNFaceObservation *faceObservation = _faceLandmarksDetection.results[0];
+    CGRect faceBoundingBox = faceObservation.boundingBox;
+    
+    if (_tracking) _didFindFaceCallback(NO, (CGRect){});
+    else _didFindFaceCallback(YES, faceBoundingBox);
+    
+    VNFaceLandmarks2D *landmarks = faceObservation.landmarks;
+    NSDictionary *requestedLandmarks = @{
+                                         @"leftEyebrow" : landmarks.leftEyebrow,
+                                         @"rightEyebrow": landmarks.rightEyebrow,
+                                         @"noseCrest"   : landmarks.noseCrest,
+                                         @"nose"        : landmarks.nose,
+                                         @"leftEye"     : landmarks.leftEye,
+                                         @"rightEye"    : landmarks.rightEye,
+                                         @"outerLips"   : landmarks.outerLips,
+                                         @"innerLips"   : landmarks.innerLips,
+                                         };
+    [requestedLandmarks enumerateKeysAndObjectsUsingBlock:^(NSString * _Nonnull landmarkName,
+                                                            VNFaceLandmarkRegion2D * _Nonnull landmarkRegion,
+                                                            BOOL * _Nonnull stop) {
+        if (landmarkRegion.pointCount) {
+            _resultHandler([self convertLandmarkPoints:landmarkRegion.normalizedPoints
+                                        withPointCount:landmarkRegion.pointCount
+                                  forFaceInBoundingBox:faceBoundingBox], nil);
+        }
     }];
 }
 
-- (CGRect)scaleRect:(const CGRect)rect
-             toSize:(const CGSize)size {
-    return CGRectMake(rect.origin.x * size.width,
-                      rect.origin.y * size.height,
-                      rect.size.width * size.width,
-                      rect.size.height * size.height);
-}
-
-- (void)convertLandmarkPoints:(const CGPoint *)landmarkPoints
-               withPointCount:(NSUInteger)pointCount
-         forFaceInBoundingBox:(CGRect)boundingBox {
+- (NSArray *)convertLandmarkPoints:(const CGPoint *)landmarkPoints
+                    withPointCount:(NSUInteger)pointCount
+              forFaceInBoundingBox:(CGRect)boundingBox {
     NSMutableArray *points = [[NSMutableArray alloc] initWithCapacity:pointCount];
     for (NSUInteger idx = 0; idx < pointCount; ++idx) {
         points[idx] = [NSValue valueWithCGPoint:CGPointMake(landmarkPoints[idx].x * boundingBox.size.width
@@ -215,7 +184,7 @@
                                                             landmarkPoints[idx].y * boundingBox.size.height
                                                             + boundingBox.origin.y)];
     }
-    if (_resultHandler) _resultHandler([points copy], nil);
+    return points.copy;
 }
 
 @end

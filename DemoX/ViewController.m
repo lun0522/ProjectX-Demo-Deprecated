@@ -14,7 +14,8 @@
 #import "ViewController.h"
 
 static const NSString *kDefaultServerAddress = @"192.168.0.7:8080";
-static const float kTrackingConfidenceThreshold = 0.8;
+static const float kTrackingConfidenceThreshold = 0.8f;
+static const float kLandmarksDotsRadius = 6.0f;
 
 @interface ViewController () <AVCaptureVideoDataOutputSampleBufferDelegate, UITextFieldDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate> {
     AVCaptureSession *_session;
@@ -266,6 +267,8 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
                             dispatch_async(dispatch_get_main_queue(), ^{
                                 for (CAShapeLayer *layer in [_shapeLayer.sublayers copy])
                                     [layer removeFromSuperlayer];
+                                
+                                if (hasFace) [weakSelf drawRectangle:faceBoundingBox];
                             });
                             
                             if (doTransfer) {
@@ -278,11 +281,9 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
                             }
                         }
                               resultHandler:^(NSArray * _Nullable points, NSError * _Nullable error) {
-                                  if (error) [self presentError:error.localizedDescription];
-                                  else [weakSelf drawLineFromPoints:points
-                                                            inRange:NSMakeRange(0, points.count)
-                                                          withColor:UIColor.redColor.CGColor
-                                                              scale:_viewBoundsSize];
+                                  if (error) [weakSelf presentError:error.localizedDescription];
+                                  else [weakSelf drawPoints:points
+                                                  withColor:UIColor.redColor.CGColor];
                         }];
 }
 
@@ -339,26 +340,28 @@ didFinishPickingMediaWithInfo:(NSDictionary<NSString *,id> *)info {
 #pragma mark - Upload / Download
 
 - (void)uploadSelectedPhoto {
+    __weak ViewController *weakSelf = self;
     [_server sendData:UIImageJPEGRepresentation(_selectedPhoto, 1.0)
       withHeaderField:@{@"Timestamp": _photoTimestamp}
             operation:PEAServerStore
               timeout:30
       responseHandler:^(NSDictionary * _Nullable response, NSError * _Nullable error) {
-          if (error) [self presentError:error.localizedDescription];
-          else [self viewControllerLog:@"Uploaded selected photo"];
+          if (error) [weakSelf presentError:error.localizedDescription];
+          else [weakSelf viewControllerLog:@"Uploaded selected photo"];
       }];
 }
 
 - (void)deleteLastUploadedPhoto {
     // the request will be cancelled immediately if no body data is appended,
     // so pass an empty NSData here
+    __weak ViewController *weakSelf = self;
     [_server sendData:[[NSData alloc] init]
       withHeaderField:@{@"Timestamp": _photoTimestamp}
             operation:PEAServerDelete
               timeout:10
       responseHandler:^(NSDictionary * _Nullable response, NSError * _Nullable error) {
-          if (error) [self presentError:error.localizedDescription];
-          else [self viewControllerLog:@"Deleted the last uploaded photo"];
+          if (error) [weakSelf presentError:error.localizedDescription];
+          else [weakSelf viewControllerLog:@"Deleted the last uploaded photo"];
       }];
 }
 
@@ -376,6 +379,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<NSString *,id> *)info {
     CGImageRef cgImage = [context createCGImage:faceImageMirrored
                                        fromRect:faceImageMirrored.extent];
     
+    __weak ViewController *weakSelf = self;
     [_server sendData:UIImageJPEGRepresentation([UIImage imageWithCGImage:cgImage], 1.0)
       withHeaderField:@{@"Timestamp": _photoTimestamp}
             operation:PEAServerTransfer
@@ -383,10 +387,10 @@ didFinishPickingMediaWithInfo:(NSDictionary<NSString *,id> *)info {
       responseHandler:^(NSDictionary * _Nullable response, NSError * _Nullable error) {
           [self endProcessingAnimationWithCompletionHandler:^{
               if (error) {
-                  [self presentError:error.localizedDescription];
+                  [weakSelf presentError:error.localizedDescription];
               } else if (response[@"binaryData"]) {
-                  [self viewControllerLog:@"Received stylized image"];
-                  [self displayStylizedImage:[UIImage imageWithData:response[@"binaryData"]]];
+                  [weakSelf viewControllerLog:@"Received stylized image"];
+                  [weakSelf displayStylizedImage:[UIImage imageWithData:response[@"binaryData"]]];
               }
           }];
       }];
@@ -394,27 +398,33 @@ didFinishPickingMediaWithInfo:(NSDictionary<NSString *,id> *)info {
 
 #pragma mark - UI
 
-- (void)drawLineFromPoints:(const NSArray<NSValue *> *)points
-                   inRange:(const NSRange)range
-                 withColor:(const CGColorRef)color
-                     scale:(CGSize)scale {
-    CAShapeLayer *newLayer = [[CAShapeLayer alloc] init];
-    newLayer.strokeColor = color;
-    newLayer.lineWidth = 2.0f;
-    newLayer.fillColor = UIColor.clearColor.CGColor;
-    
-    UIBezierPath *path = [[UIBezierPath alloc] init];
-    [path moveToPoint:CGPointMake(points[range.location].CGPointValue.x * scale.width,
-                                  points[range.location].CGPointValue.y * scale.height)];
-    
-    for (NSUInteger idx = range.location; idx < NSMaxRange(range); ++idx) {
-        [path addLineToPoint:CGPointMake(points[idx].CGPointValue.x * scale.width,
-                                         points[idx].CGPointValue.y * scale.height)];
-    }
-    newLayer.path = path.CGPath;
-    
+- (void)drawPoints:(const NSArray<NSValue *> *)points
+         withColor:(const CGColorRef)color {
     dispatch_async(dispatch_get_main_queue(), ^{
-        [_shapeLayer addSublayer:newLayer];
+        [points enumerateObjectsUsingBlock:^(NSValue * _Nonnull point,
+                                             NSUInteger idx,
+                                             BOOL * _Nonnull stop) {
+            CAShapeLayer *pointLayer = [[CAShapeLayer alloc] init];
+            [pointLayer setFillColor:UIColor.redColor.CGColor];
+            CGRect dotRect = CGRectMake(point.CGPointValue.x * _viewBoundsSize.width - kLandmarksDotsRadius / 2,
+                                        point.CGPointValue.y * _viewBoundsSize.height - kLandmarksDotsRadius / 2,
+                                        kLandmarksDotsRadius, kLandmarksDotsRadius);
+            pointLayer.path = [UIBezierPath bezierPathWithOvalInRect:dotRect].CGPath;
+            [_shapeLayer addSublayer:pointLayer];
+        }];
+    });
+}
+
+- (void)drawRectangle:(CGRect)rect {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        CAShapeLayer *rectLayer = [[CAShapeLayer alloc] init];
+        [rectLayer setFillColor:UIColor.clearColor.CGColor];
+        [rectLayer setStrokeColor:UIColor.redColor.CGColor];
+        rectLayer.path = [UIBezierPath bezierPathWithRect:CGRectMake(rect.origin.x * _viewBoundsSize.width,
+                                                                     rect.origin.y * _viewBoundsSize.height,
+                                                                     rect.size.width * _viewBoundsSize.width,
+                                                                     rect.size.height * _viewBoundsSize.height)].CGPath;
+        [_shapeLayer addSublayer:rectLayer];
     });
 }
 
