@@ -263,21 +263,22 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
     __weak ViewController *weakSelf = self;
     [_detector detectFaceLandmarksInCIImage:ciImage
                 trackingConfidenceThreshold:kTrackingConfidenceThreshold
-                        didFindFaceCallback:^(BOOL hasFace, CGRect faceBoundingBox) {
+                        didFindFaceCallback:^(LDRFaceDetectionEvent event, CGRect faceBoundingBox) {
                             dispatch_async(dispatch_get_main_queue(), ^{
                                 for (CAShapeLayer *layer in [_shapeLayer.sublayers copy])
                                     [layer removeFromSuperlayer];
                                 
-                                if (hasFace) [weakSelf drawRectangle:faceBoundingBox];
+                                if (event == LDRFaceFoundByDetection)
+                                    [weakSelf drawRectangle:[weakSelf scaleRect:faceBoundingBox toSize:_viewBoundsSize]];
                             });
                             
                             if (doTransfer) {
-                                if (!hasFace) [weakSelf presentError:@"No face found"];
+                                if (!event) [weakSelf presentError:@"No face found"];
                                 else if (!_selectedPhoto) [weakSelf presentError:@"Please select a photo"];
-                                else [weakSelf transferWithCIImage:ciImage inBoundingBox:faceBoundingBox];
+                                else [weakSelf transferWithCIImage:ciImage inBoundingBox:[weakSelf scaleRect:faceBoundingBox toSize:ciImage.extent.size]];
                                 
                                 _willTransfer = NO;
-                                if (!hasFace || !_selectedPhoto) [_session startRunning];
+                                if (!event || !_selectedPhoto) [_session startRunning];
                             }
                         }
                               resultHandler:^(NSArray * _Nullable points, NSError * _Nullable error) {
@@ -420,12 +421,16 @@ didFinishPickingMediaWithInfo:(NSDictionary<NSString *,id> *)info {
         CAShapeLayer *rectLayer = [[CAShapeLayer alloc] init];
         [rectLayer setFillColor:UIColor.clearColor.CGColor];
         [rectLayer setStrokeColor:UIColor.redColor.CGColor];
-        rectLayer.path = [UIBezierPath bezierPathWithRect:CGRectMake(rect.origin.x * _viewBoundsSize.width,
-                                                                     rect.origin.y * _viewBoundsSize.height,
-                                                                     rect.size.width * _viewBoundsSize.width,
-                                                                     rect.size.height * _viewBoundsSize.height)].CGPath;
+        rectLayer.path = [UIBezierPath bezierPathWithRect:rect].CGPath;
         [_shapeLayer addSublayer:rectLayer];
     });
+}
+
+- (CGRect)scaleRect:(CGRect)rect toSize:(CGSize)size {
+    return CGRectMake(rect.origin.x * size.width,
+                      rect.origin.y * size.height,
+                      rect.size.width * size.width,
+                      rect.size.height * size.height);
 }
 
 - (void)onProcessingAnimation {

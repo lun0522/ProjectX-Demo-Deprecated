@@ -8,7 +8,13 @@
 
 #import <Foundation/Foundation.h>
 
-typedef void (^LocalDetectorDidFindFaceCallback)(BOOL hasFace, CGRect faceBoundingBox);
+typedef NS_ENUM(NSUInteger, LDRFaceDetectionEvent) {
+    LDRFaceNotFound = 0,
+    LDRFaceFoundByDetection,
+    LDRFaceFoundByTracking,
+};
+
+typedef void (^LocalDetectorDidFindFaceCallback)(LDRFaceDetectionEvent event, CGRect faceBoundingBox);
 typedef void (^FaceLandmarksDetectionResultHandler)(NSArray * _Nullable points, NSError * _Nullable error);
 
 @interface LocalDetector : NSObject

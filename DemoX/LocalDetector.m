@@ -95,7 +95,7 @@
         _lastObservation = faceObservation;
         _tracking = YES;
     } else {
-        _didFindFaceCallback(NO, (CGRect){});
+        _didFindFaceCallback(LDRFaceNotFound, (CGRect){});
     }
 }
 
@@ -148,9 +148,8 @@
     
     VNFaceObservation *faceObservation = _faceLandmarksDetection.results[0];
     CGRect faceBoundingBox = faceObservation.boundingBox;
-    
-    if (_tracking) _didFindFaceCallback(NO, (CGRect){});
-    else _didFindFaceCallback(YES, faceBoundingBox);
+
+    _didFindFaceCallback(_tracking? LDRFaceFoundByTracking: LDRFaceFoundByDetection, faceBoundingBox);
     
     VNFaceLandmarks2D *landmarks = faceObservation.landmarks;
     NSDictionary *requestedLandmarks = @{
