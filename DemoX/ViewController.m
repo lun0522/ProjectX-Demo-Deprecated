@@ -264,13 +264,13 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
     [_detector detectFaceLandmarksInCIImage:ciImage
                 trackingConfidenceThreshold:kTrackingConfidenceThreshold
                         didFindFaceCallback:^(LDRFaceDetectionEvent event, CGRect faceBoundingBox) {
-                            dispatch_async(dispatch_get_main_queue(), ^{
-                                for (CAShapeLayer *layer in [_shapeLayer.sublayers copy])
-                                    [layer removeFromSuperlayer];
-                                
-                                if (event == LDRFaceFoundByDetection)
+                            if (event == LDRFaceNotFound) {
+                                [weakSelf clearShapeLayer];
+                            } else if (event == LDRFaceFoundByDetection) {
+                                dispatch_async(dispatch_get_main_queue(), ^{
                                     [weakSelf drawRectangle:[weakSelf scaleRect:faceBoundingBox toSize:_viewBoundsSize]];
-                            });
+                                });
+                            }
                             
                             if (doTransfer) {
                                 if (!event) [weakSelf presentError:@"No face found"];
@@ -282,9 +282,13 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
                             }
                         }
                               resultHandler:^(NSArray * _Nullable points, NSError * _Nullable error) {
-                                  if (error) [weakSelf presentError:error.localizedDescription];
-                                  else [weakSelf drawPoints:points
-                                                  withColor:UIColor.redColor.CGColor];
+                                  if (error) {
+                                      [weakSelf presentError:error.localizedDescription];
+                                  } else {
+                                      [weakSelf clearShapeLayer];
+                                      [weakSelf drawPoints:points
+                                                 withColor:UIColor.redColor.CGColor];
+                                  }
                         }];
 }
 
@@ -398,6 +402,13 @@ didFinishPickingMediaWithInfo:(NSDictionary<NSString *,id> *)info {
 }
 
 #pragma mark - UI
+
+- (void)clearShapeLayer {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        for (CAShapeLayer *layer in [_shapeLayer.sublayers copy])
+            [layer removeFromSuperlayer];
+    });
+}
 
 - (void)drawPoints:(const NSArray<NSValue *> *)points
          withColor:(const CGColorRef)color {

@@ -96,6 +96,7 @@
         _tracking = YES;
     } else {
         _didFindFaceCallback(LDRFaceNotFound, (CGRect){});
+        _didFindFaceCallback = nil;
     }
 }
 
@@ -139,8 +140,7 @@
     NSError *error;
     [_faceLandmarksRequest performRequests:@[_faceLandmarksDetection] onCIImage:image error:&error];
     if (error) {
-        [self detectorErrorWithDescription:[NSString stringWithFormat:
-                                            @"Error in landmarks detection: %@",
+        [self detectorErrorWithDescription:[NSString stringWithFormat:@"Error in landmarks detection: %@",
                                             error.localizedDescription]
                                       code:DMXFaceLandmarksDetectionError];
         return;
@@ -150,6 +150,7 @@
     CGRect faceBoundingBox = faceObservation.boundingBox;
 
     _didFindFaceCallback(_tracking? LDRFaceFoundByTracking: LDRFaceFoundByDetection, faceBoundingBox);
+    _didFindFaceCallback = nil;
     
     VNFaceLandmarks2D *landmarks = faceObservation.landmarks;
     NSDictionary *requestedLandmarks = @{
@@ -162,20 +163,24 @@
                                          @"outerLips"   : landmarks.outerLips,
                                          @"innerLips"   : landmarks.innerLips,
                                          };
+    
+    NSMutableArray *landmarksPoints = [[NSMutableArray alloc] init];
     [requestedLandmarks enumerateKeysAndObjectsUsingBlock:^(NSString * _Nonnull landmarkName,
                                                             VNFaceLandmarkRegion2D * _Nonnull landmarkRegion,
                                                             BOOL * _Nonnull stop) {
         if (landmarkRegion.pointCount) {
-            _resultHandler([self convertLandmarkPoints:landmarkRegion.normalizedPoints
-                                        withPointCount:landmarkRegion.pointCount
-                                  forFaceInBoundingBox:faceBoundingBox], nil);
+            [landmarksPoints addObjectsFromArray:[self convertLandmarkPoints:landmarkRegion.normalizedPoints
+                                                              withPointCount:landmarkRegion.pointCount
+                                                        forFaceInBoundingBox:faceBoundingBox]];
         }
     }];
+    _resultHandler(landmarksPoints.copy, nil);
+    _resultHandler = nil;
 }
 
-- (NSArray *)convertLandmarkPoints:(const CGPoint *)landmarkPoints
-                    withPointCount:(NSUInteger)pointCount
-              forFaceInBoundingBox:(CGRect)boundingBox {
+- (NSMutableArray *)convertLandmarkPoints:(const CGPoint *)landmarkPoints
+                           withPointCount:(NSUInteger)pointCount
+                     forFaceInBoundingBox:(CGRect)boundingBox {
     NSMutableArray *points = [[NSMutableArray alloc] initWithCapacity:pointCount];
     for (NSUInteger idx = 0; idx < pointCount; ++idx) {
         points[idx] = [NSValue valueWithCGPoint:CGPointMake(landmarkPoints[idx].x * boundingBox.size.width
@@ -183,7 +188,7 @@
                                                             landmarkPoints[idx].y * boundingBox.size.height
                                                             + boundingBox.origin.y)];
     }
-    return points.copy;
+    return points;
 }
 
 @end
