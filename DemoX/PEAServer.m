@@ -207,7 +207,11 @@ static NSDictionary *kServerOperationDict = nil;
                                                                               jsonError.localizedDescription]]);
                                         else responseHandler(responseDict, nil);
                                     } else if ([contentType isEqualToString:@"application/octet-stream"]) {
-                                        NSDictionary *responseDict = data.length? @{@"binaryData": data}: nil;
+                                        NSDictionary *responseHeaderFields = ((NSHTTPURLResponse *)response).allHeaderFields;
+                                        NSDictionary *responseDict = data.length? @{@"binaryData": data,
+                                                                                    @"url": responseHeaderFields[@"Image-URL"],
+                                                                                    @"title": responseHeaderFields[@"Image-Title"],
+                                                                                    }: nil;
                                         responseHandler(responseDict, nil);
                                     } else {
                                         responseHandler(nil, [self sendDataErrorWithDescription:@"Unknown content type"]);

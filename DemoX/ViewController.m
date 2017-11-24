@@ -393,9 +393,15 @@ didFinishPickingMediaWithInfo:(NSDictionary<NSString *,id> *)info {
           [self endProcessingAnimationWithCompletionHandler:^{
               if (error) {
                   [weakSelf presentError:error.localizedDescription];
-              } else if (response[@"binaryData"]) {
+                  [_session startRunning];
+              } else if (response) {
                   [weakSelf viewControllerLog:@"Received stylized image"];
-                  [weakSelf displayStylizedImage:[UIImage imageWithData:response[@"binaryData"]]];
+                  [weakSelf displayStylizedImage:[UIImage imageWithData:response[@"binaryData"]]
+                                       WithTitle:response[@"title"]
+                                             URL:response[@"url"]];
+              } else {
+                  [weakSelf presentError:@"No data received"];
+                  [_session startRunning];
               }
           }];
       }];
@@ -471,14 +477,36 @@ didFinishPickingMediaWithInfo:(NSDictionary<NSString *,id> *)info {
     });
 }
 
-- (void)displayStylizedImage:(UIImage *)image {
+- (void)image:(UIImage *)image
+didFinishSavingWithError:(NSError *)error
+  contextInfo:(void *)contextInfo {
+    if (error) {
+        [self presentError:error.localizedDescription];
+        [_session startRunning];
+    } else {
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Success!"
+                                                                       message:@"Please view your artwork in the album."
+                                                                preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:@"Great"
+                                                  style:UIAlertActionStyleCancel
+                                                handler:nil]];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self presentViewController:alert animated:YES completion:nil];
+            [_session startRunning];
+        });
+    }
+}
+
+- (void)displayStylizedImage:(UIImage *)image
+                   WithTitle:(NSString *)title
+                         URL:(NSString *)url {
     CGSize newSize = CGSizeMake(245.0, 245.0 * image.size.height / image.size.width);
     UIGraphicsBeginImageContextWithOptions(newSize, NO, 0.0);
     [image drawInRect:CGRectMake(0, 0, newSize.width, newSize.height)];
     UIImage *resizedImage = UIGraphicsGetImageFromCurrentImageContext();
     UIGraphicsEndImageContext();
     
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:nil
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:title
                                                                    message:nil
                                                             preferredStyle:UIAlertControllerStyleAlert];
     UIAlertAction *imagePlaceholder = [UIAlertAction actionWithTitle:@"placeholder"
@@ -487,7 +515,21 @@ didFinishPickingMediaWithInfo:(NSDictionary<NSString *,id> *)info {
     [imagePlaceholder setValue:[resizedImage imageWithRenderingMode:UIImageRenderingModeAlwaysOriginal] forKey:@"image"];
     [imagePlaceholder setEnabled:NO];
     [alert addAction:imagePlaceholder];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Great"
+    [alert addAction:[UIAlertAction actionWithTitle:@"Save to album"
+                                              style:UIAlertActionStyleDefault
+                                            handler:^(UIAlertAction * _Nonnull action) {
+                                                UIImageWriteToSavedPhotosAlbum(image, self, @selector(image:didFinishSavingWithError:contextInfo:), nil);
+                                            }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"View painting"
+                                              style:UIAlertActionStyleDefault
+                                            handler:^(UIAlertAction * _Nonnull action) {
+                                                [[UIApplication sharedApplication] openURL:[NSURL URLWithString:url]
+                                                                                   options:@{}
+                                                                         completionHandler:^(BOOL success) {
+                                                                             [_session startRunning];
+                                                                         }];
+                                            }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Return"
                                               style:UIAlertActionStyleDefault
                                             handler:^(UIAlertAction * _Nonnull action) {
                                                 [alert dismissViewControllerAnimated:YES completion:nil];
