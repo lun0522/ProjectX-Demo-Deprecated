@@ -8,20 +8,18 @@
 
 #import <AVFoundation/AVFoundation.h>
 #import <Vision/Vision.h>
+#import "VideoLayer.h"
 #import "LocalDetector.h"
 #import "PEAServer.h"
 #import "DMXError.h"
 #import "ViewController.h"
 
 static const NSString *kDefaultServerAddress = @"192.168.0.7:8080";
-static const float kTrackingConfidenceThreshold = 0.8f;
 static const float kLandmarksDotsRadius = 6.0f;
 
-@interface ViewController () <AVCaptureVideoDataOutputSampleBufferDelegate, UITextFieldDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate> {
-    AVCaptureSession *_session;
+@interface ViewController () <UITextFieldDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate, VideoCaptureDelegate> {
+    VideoLayer *_videoLayer;
     CAShapeLayer *_shapeLayer;
-    AVCaptureVideoPreviewLayer *_previewLayer;
-    AVCaptureDevicePosition _currentCameraPosition;
     UIImagePickerController *_imagePickerController;
     UIVisualEffectView *_blurEffectView;
     UIActivityIndicatorView *_transferIndicator;
@@ -45,13 +43,11 @@ static const float kLandmarksDotsRadius = 6.0f;
 - (void)viewDidLoad {
     [super viewDidLoad];
     
-    [self requestServerAddress];
-    
     _willTransfer = NO;
     _viewBoundsSize = self.view.bounds.size;
     _detector = [[LocalDetector alloc] init];
+    _server = [[PEAServer alloc] init];
     
-    [self setupSession];
     [self setupVisibles];
     [self setupButtons];
 }
@@ -59,20 +55,20 @@ static const float kLandmarksDotsRadius = 6.0f;
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
     
+    [_videoLayer setFrameRect:self.view.frame];
     _shapeLayer.frame = self.view.frame;
-    _previewLayer.frame = self.view.frame;
 }
 
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
     
-    [self.view.layer insertSublayer:_previewLayer atIndex:0];
+    [self.view.layer insertSublayer:_videoLayer atIndex:0];
     
     _shapeLayer.strokeColor = UIColor.redColor.CGColor;
     _shapeLayer.lineWidth = 2.0f;
     [_shapeLayer setAffineTransform:CGAffineTransformMakeScale(-1, -1)];
     
-    [self.view.layer insertSublayer:_shapeLayer above:_previewLayer];
+    [self.view.layer insertSublayer:_shapeLayer above:_videoLayer];
 }
 
 - (void)didReceiveMemoryWarning {
@@ -86,40 +82,10 @@ static const float kLandmarksDotsRadius = 6.0f;
 
 #pragma mark - Setup
 
-- (void)requestServerAddress {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Please input server address"
-                                                                   message:nil
-                                                            preferredStyle:UIAlertControllerStyleAlert];
-    [alert addTextFieldWithConfigurationHandler:^(UITextField * _Nonnull textField) {
-        textField.placeholder = [NSString stringWithFormat:@"Default %@", kDefaultServerAddress.copy];
-        textField.delegate = self;
-        textField.textAlignment = NSTextAlignmentCenter;
-    }];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Confirm"
-                                              style:UIAlertActionStyleDestructive
-                                            handler:^(UIAlertAction * _Nonnull action) {
-                                                _server = [PEAServer serverWithAddress:[NSString stringWithFormat:@"http://%@", alert.textFields[0].text]];
-                                            }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Use default address"
-                                              style:UIAlertActionStyleDefault
-                                            handler:^(UIAlertAction * _Nonnull action) {
-                                                _server = [PEAServer serverWithAddress:[NSString stringWithFormat:@"http://%@", kDefaultServerAddress.copy]];
-                                            }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"Search in LAN"
-                                              style:UIAlertActionStyleDefault
-                                            handler:^(UIAlertAction * _Nonnull action) {
-                                                _server = [PEAServer serverWithAddress:nil];
-                                            }]];
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [self presentViewController:alert animated:YES completion:nil];
-    });
-}
-
 - (void)setupVisibles {
     _shapeLayer = [[CAShapeLayer alloc] init];
-    
-    _previewLayer = [AVCaptureVideoPreviewLayer layerWithSession:_session];
-    _previewLayer.videoGravity = kCAGravityResizeAspectFill;
+    _videoLayer = [[VideoLayer alloc] init];
+    [_videoLayer setCapturerDelegate:self];
     
     _blurEffectView = [[UIVisualEffectView alloc] init];
     _blurEffectView.frame = self.view.frame;
@@ -162,13 +128,13 @@ static const float kLandmarksDotsRadius = 6.0f;
                                               style:UIAlertActionStyleDefault
                                             handler:^(UIAlertAction * _Nonnull action) {
                                                 [self showImagePickerForSourceType:UIImagePickerControllerSourceTypePhotoLibrary];
-                                                [_session stopRunning];
+                                                [_videoLayer stop];
                                             }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Take a photo"
                                               style:UIAlertActionStyleDefault
                                             handler:^(UIAlertAction * _Nonnull action) {
                                                 [self showImagePickerForSourceType:UIImagePickerControllerSourceTypeCamera];
-                                                [_session stopRunning];
+                                                [_videoLayer stop];
                                             }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
 
@@ -182,127 +148,7 @@ static const float kLandmarksDotsRadius = 6.0f;
 }
 
 - (void)tapSwitchCamera {
-    if (_session) {
-        [_session beginConfiguration];
-        
-        AVCaptureInput *currentInput = _session.inputs[0];
-        AVCaptureDevice *newCamera = [self cameraWithPreviousPosition:((AVCaptureDeviceInput *)currentInput).device.position];
-        
-        [_session removeInput:currentInput];
-        NSError *error;
-        AVCaptureDeviceInput *newInput = [[AVCaptureDeviceInput alloc] initWithDevice:newCamera
-                                                                                error:&error];
-        if (error)
-            [self viewControllerLog:[NSString stringWithFormat:@"Cannot init device input: %@", error.localizedDescription]];
-        _currentCameraPosition = newCamera.position;
-        if ([_session canAddInput:newInput]) [_session addInput:newInput];
-        
-        [_session commitConfiguration];
-    } else {
-        [self viewControllerLog:@"No session!"];
-    }
-}
-
-- (void)setButton:(UIButton *)button
-        withTitle:(NSString *)title
-        newTarget:(SEL)sel {
-    [button setTitle:title forState:UIControlStateNormal];
-    [button removeTarget:self action:nil forControlEvents:UIControlEventTouchDown];
-    [button addTarget:self action:sel forControlEvents:UIControlEventTouchDown];
-}
-
-#pragma mark - AVCaptureSession
-
-- (void)setupSession {
-    _session = [[AVCaptureSession alloc] init];
-    AVCaptureDevice *defaultCamera = [AVCaptureDevice defaultDeviceWithDeviceType:AVCaptureDeviceTypeBuiltInWideAngleCamera
-                                                                        mediaType:AVMediaTypeVideo
-                                                                         position:AVCaptureDevicePositionFront];
-    
-    @try {
-        [_session beginConfiguration];
-        
-        NSError *error;
-        AVCaptureDeviceInput *deviceInput = [AVCaptureDeviceInput deviceInputWithDevice:defaultCamera
-                                                                                  error:&error];
-        if (error)
-            [self viewControllerLog:[NSString stringWithFormat:@"Cannot init device input: %@", error.localizedDescription]];
-        _currentCameraPosition = AVCaptureDevicePositionFront;
-        if ([_session canAddInput:deviceInput]) [_session addInput:deviceInput];
-        
-        AVCaptureVideoDataOutput *videoOutput = [[AVCaptureVideoDataOutput alloc] init];
-        videoOutput.videoSettings = @{(__bridge NSString *)kCVPixelBufferPixelFormatTypeKey: @(kCVPixelFormatType_420YpCbCr8BiPlanarFullRange)};
-        videoOutput.alwaysDiscardsLateVideoFrames = YES;
-        [videoOutput setSampleBufferDelegate:self
-                                       queue:dispatch_queue_create("com.lun.demox.videooutput.queue", NULL)];
-        if ([_session canAddOutput:videoOutput]) [_session addOutput:videoOutput];
-        
-        [_session commitConfiguration];
-        [_session startRunning];
-    }
-    @catch (NSException *exception) {
-        [self viewControllerLog:@"Session setup failed!"];
-    }
-}
-
-- (void)captureOutput:(AVCaptureOutput *)output
-didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
-       fromConnection:(AVCaptureConnection *)connection {
-    if (_willTransfer) [_session stopRunning];
-    BOOL doTransfer = _willTransfer;
-    
-    CVImageBufferRef pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
-    CFDictionaryRef attachments = CMCopyDictionaryOfAttachments(kCFAllocatorDefault, sampleBuffer, kCMAttachmentMode_ShouldPropagate);
-    
-    CIImage *ciImage = [CIImage imageWithCVImageBuffer:pixelBuffer
-                                               options:(__bridge NSDictionary *)attachments];
-    if (_currentCameraPosition == AVCaptureDevicePositionBack) 
-        ciImage = [ciImage imageByApplyingOrientation:UIImageOrientationUpMirrored];
-    ciImage = [ciImage imageByApplyingOrientation:UIImageOrientationLeftMirrored];
-    
-    __weak ViewController *weakSelf = self;
-    [_detector detectFaceLandmarksInCIImage:ciImage
-                trackingConfidenceThreshold:kTrackingConfidenceThreshold
-                        didFindFaceCallback:^(LDRFaceDetectionEvent event, CGRect faceBoundingBox) {
-                            if (event == LDRFaceNotFound) {
-                                [weakSelf clearShapeLayer];
-                            } else if (event == LDRFaceFoundByDetection) {
-                                dispatch_async(dispatch_get_main_queue(), ^{
-                                    [weakSelf drawRectangle:[weakSelf scaleRect:faceBoundingBox toSize:_viewBoundsSize]];
-                                });
-                            }
-                            
-                            if (doTransfer) {
-                                if (!event) [weakSelf presentError:@"No face found"];
-                                else if (!_selectedPhoto) [weakSelf presentError:@"Please select a photo"];
-                                else [weakSelf transferWithCIImage:ciImage inBoundingBox:[weakSelf scaleRect:faceBoundingBox toSize:ciImage.extent.size]];
-                                
-                                _willTransfer = NO;
-                                if (!event || !_selectedPhoto) [_session startRunning];
-                            }
-                        }
-                              resultHandler:^(NSArray * _Nullable points, NSError * _Nullable error) {
-                                  if (error) {
-                                      [weakSelf presentError:error.localizedDescription];
-                                  } else {
-                                      [weakSelf clearShapeLayer];
-                                      [weakSelf drawPoints:points
-                                                 withColor:UIColor.redColor.CGColor];
-                                  }
-                        }];
-}
-
-- (AVCaptureDevice *)cameraWithPreviousPosition:(const AVCaptureDevicePosition)previousPosition {
-    switch (previousPosition) {
-        case AVCaptureDevicePositionFront:
-        case AVCaptureDevicePositionBack:
-            return [AVCaptureDevice defaultDeviceWithDeviceType:AVCaptureDeviceTypeBuiltInWideAngleCamera
-                                                      mediaType:AVMediaTypeVideo
-                                                       position:previousPosition == AVCaptureDevicePositionFront? AVCaptureDevicePositionBack: AVCaptureDevicePositionFront];
-        default:
-            [self viewControllerLog:@"Previous position of camera not specified!"];
-            return nil;
-    }
+    [_videoLayer switchCamera];
 }
 
 #pragma mark - Image picker
@@ -321,7 +167,7 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
 didFinishPickingMediaWithInfo:(NSDictionary<NSString *,id> *)info {
     [self dismissViewControllerAnimated:YES completion:nil];
     _imagePickerController = nil;
-    [_session startRunning];
+    [_videoLayer start];
     
     if (_photoTimestamp) [self deleteLastUploadedPhoto];
     _selectedPhoto = info[UIImagePickerControllerOriginalImage];
@@ -339,10 +185,47 @@ didFinishPickingMediaWithInfo:(NSDictionary<NSString *,id> *)info {
 - (void)imagePickerControllerDidCancel:(UIImagePickerController *)picker {
     [self dismissViewControllerAnimated:YES completion:nil];
     _imagePickerController = nil;
-    [_session startRunning];
+    [_videoLayer start];
 }
 
-#pragma mark - Upload / Download
+#pragma mark - Video capture
+
+- (void)didCaptureFrame:(CIImage *)frame {
+    if (_willTransfer) [_videoLayer stop];
+    BOOL doTransfer = _willTransfer;
+    
+    __weak ViewController *weakSelf = self;
+    [_detector detectFaceLandmarksInCIImage:frame
+                        didFindFaceCallback:^(LDRFaceDetectionEvent event, CGRect faceBoundingBox) {
+                            if (event == LDRFaceNotFound) {
+                                [weakSelf clearShapeLayer];
+                            } else if (event == LDRFaceFoundByDetection) {
+                                dispatch_async(dispatch_get_main_queue(), ^{
+                                    [weakSelf drawRectangle:[weakSelf scaleRect:faceBoundingBox toSize:_viewBoundsSize]];
+                                });
+                            }
+                            
+                            if (doTransfer) {
+                                if (event == LDRFaceNotFound) [weakSelf presentError:@"No face found"];
+                                else if (!_selectedPhoto) [weakSelf presentError:@"Please select a photo"];
+                                else [weakSelf transferWithCIImage:frame inBoundingBox:[weakSelf scaleRect:faceBoundingBox toSize:frame.extent.size]];
+                                
+                                _willTransfer = NO;
+                                if (event == LDRFaceNotFound || !_selectedPhoto) [_videoLayer start];
+                            }
+                        }
+                              resultHandler:^(NSArray * _Nullable points, NSError * _Nullable error) {
+                                  if (error) {
+                                      [weakSelf presentError:error.localizedDescription];
+                                  } else {
+                                      [weakSelf clearShapeLayer];
+                                      [weakSelf drawPoints:points
+                                                 withColor:UIColor.redColor.CGColor];
+                                  }
+                              }];
+}
+
+#pragma mark - Upload
 
 - (void)uploadSelectedPhoto {
     __weak ViewController *weakSelf = self;
@@ -393,7 +276,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<NSString *,id> *)info {
           [self endProcessingAnimationWithCompletionHandler:^{
               if (error) {
                   [weakSelf presentError:error.localizedDescription];
-                  [_session startRunning];
+                  [_videoLayer start];
               } else if (response) {
                   [weakSelf viewControllerLog:@"Received stylized image"];
                   [weakSelf displayStylizedImage:[UIImage imageWithData:response[@"binaryData"]]
@@ -401,7 +284,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<NSString *,id> *)info {
                                              URL:response[@"url"]];
               } else {
                   [weakSelf presentError:@"No data received"];
-                  [_session startRunning];
+                  [_videoLayer start];
               }
           }];
       }];
@@ -482,7 +365,7 @@ didFinishSavingWithError:(NSError *)error
   contextInfo:(void *)contextInfo {
     if (error) {
         [self presentError:error.localizedDescription];
-        [_session startRunning];
+        [_videoLayer start];
     } else {
         UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Success!"
                                                                        message:@"Please view your artwork in the album."
@@ -492,7 +375,7 @@ didFinishSavingWithError:(NSError *)error
                                                 handler:nil]];
         dispatch_async(dispatch_get_main_queue(), ^{
             [self presentViewController:alert animated:YES completion:nil];
-            [_session startRunning];
+            [_videoLayer start];
         });
     }
 }
@@ -526,14 +409,14 @@ didFinishSavingWithError:(NSError *)error
                                                 [[UIApplication sharedApplication] openURL:[NSURL URLWithString:url]
                                                                                    options:@{}
                                                                          completionHandler:^(BOOL success) {
-                                                                             [_session startRunning];
+                                                                             [_videoLayer start];
                                                                          }];
                                             }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"Return"
                                               style:UIAlertActionStyleDefault
                                             handler:^(UIAlertAction * _Nonnull action) {
                                                 [alert dismissViewControllerAnimated:YES completion:nil];
-                                                [_session startRunning];
+                                                [_videoLayer start];
                                             }]];
     dispatch_async(dispatch_get_main_queue(), ^{
         [self presentViewController:alert animated:YES completion:nil];

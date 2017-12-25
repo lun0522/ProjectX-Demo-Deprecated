@@ -12,8 +12,11 @@
 static const NSString *kServerIdentityString = @"PEAServer";
 static const NSString *kServerType = @"_demox._tcp.";
 static const NSString *kServerDomain = @"local.";
+static const NSString *kLeanCloudUrl = @"https://us-api.leancloud.cn/1.1/classes/Server";
+static const NSString *kLeanCloudAppId = @"OH4VbcK1AXEtklkhpkGCikPB-MdYXbMMI";
+static const NSString *kLeanCloudAppKey = @"0azk0HxCkcrtNGIKC5BMwxnr";
+static const NSString *kLeanCloudObjectId = @"5a40a4eee37d040044aa4733";
 static const NSString *kClientAuthenticationString = @"PortableEmotionAnalysis";
-static NSDictionary *kDlibLandmarksMap = nil;
 static NSDictionary *kServerOperationDict = nil;
 
 @interface PEAServer () <NSNetServiceBrowserDelegate, NSNetServiceDelegate> {
@@ -26,47 +29,24 @@ static NSDictionary *kServerOperationDict = nil;
 
 @implementation PEAServer
 
-- (instancetype)initWithAddress:(NSString *)address {
+- (instancetype)init {
     if (self = [super init]) {
-        kDlibLandmarksMap = @{
-                              @"faceContour" : [NSValue valueWithRange:NSMakeRange(0, 17)],
-                              @"leftEyebrow" : [NSValue valueWithRange:NSMakeRange(17, 5)],
-                              @"rightEyebrow": [NSValue valueWithRange:NSMakeRange(22, 5)],
-                              @"noseCrest"   : [NSValue valueWithRange:NSMakeRange(27, 4)],
-                              @"nose"        : [NSValue valueWithRange:NSMakeRange(31, 5)],
-                              @"leftEye"     : [NSValue valueWithRange:NSMakeRange(36, 6)],
-                              @"rightEye"    : [NSValue valueWithRange:NSMakeRange(42, 6)],
-                              @"outerLips"   : [NSValue valueWithRange:NSMakeRange(48,12)],
-                              @"innerLips"   : [NSValue valueWithRange:NSMakeRange(60, 8)],
-                              };
         kServerOperationDict = @{
                                  @(PEAServerStore)   : @"Store",
                                  @(PEAServerDelete)  : @"Delete",
                                  @(PEAServerTransfer): @"Transfer",
                                  };
-        if (address) {
-            _serverAddress = address;
-            [self serverLog:[NSString stringWithFormat:@"Use address: %@", _serverAddress]];
-        }
-        else
-            [self searchServerInLAN];
+//        [self searchServerInLAN];
+        [self requestServerAddress];
     }
     return self;
-}
-
-+ (PEAServer * _Nonnull)serverWithAddress:(NSString * _Nullable)address {
-    return [[PEAServer alloc] initWithAddress:address];
-}
-
-- (NSDictionary * _Nonnull)getLandmarksMap {
-    return kDlibLandmarksMap.copy;
 }
 
 - (void)serverLog:(NSString *)content {
     NSLog(@"%@", [NSString stringWithFormat:@"[PEAServer] %@", content]);
 }
 
-#pragma mark Search server with Bonjour
+#pragma mark - Search server with Bonjour
 
 - (void)searchServerInLAN {
     if (!_netServiceBrowser) _netServiceBrowser = [[NSNetServiceBrowser alloc] init];
@@ -85,7 +65,7 @@ static NSDictionary *kServerOperationDict = nil;
     [_netServiceResolverList removeAllObjects];
 }
 
-#pragma mark NSNetServiceBrowser
+#pragma mark - NSNetServiceBrowser
 
 - (void)netServiceBrowser:(NSNetServiceBrowser *)browser
            didFindService:(NSNetService *)service
@@ -108,7 +88,7 @@ static NSDictionary *kServerOperationDict = nil;
     }
 }
 
-#pragma mark NSNetServiceResolver
+#pragma mark - NSNetServiceResolver
 
 - (void)netServiceDidResolveAddress:(NSNetService *)service {
     if (service.TXTRecordData) {
@@ -150,7 +130,52 @@ static NSDictionary *kServerOperationDict = nil;
     }
 }
 
-#pragma mark Send data to server
+#pragma mark - HTTP requests
+
+- (void)requestServerAddress {
+    __weak PEAServer *weakSelf = self;
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:kLeanCloudUrl.copy]
+                                                           cachePolicy:NSURLRequestReloadIgnoringCacheData
+                                                       timeoutInterval:10];
+    [request setHTTPMethod:@"GET"];
+    NSDictionary *headerField = @{@"X-LC-Id": kLeanCloudAppId,
+                                  @"X-LC-Key": kLeanCloudAppKey,
+                                  @"Content-Type": @"application/json",
+                                  };
+    [headerField enumerateKeysAndObjectsUsingBlock:^(NSString * _Nonnull field,
+                                                     NSString * _Nonnull value,
+                                                     BOOL * _Nonnull stop) {
+        [request setValue:value forHTTPHeaderField:field];
+    }];
+    NSURLSession *urlSession = [NSURLSession sessionWithConfiguration:[NSURLSessionConfiguration defaultSessionConfiguration]];
+    NSURLSessionTask *task =
+    [urlSession dataTaskWithRequest:request
+                  completionHandler:^(NSData * _Nullable data,
+                                      NSURLResponse * _Nullable response,
+                                      NSError * _Nullable error) {
+                      if (error) {
+                          [weakSelf serverLog:[@"Error in requesting server address: %@" stringByAppendingString:error.localizedDescription]];
+                      } else if (!data) {
+                          [weakSelf serverLog:@"No data returned by requesting server address"];
+                      } else {
+                          NSError *jsonError;
+                          NSDictionary *responseDict =
+                          [NSJSONSerialization JSONObjectWithData:data
+                                                          options:kNilOptions
+                                                            error:&jsonError];
+                          
+                          if (!responseDict[@"results"]) {
+                              [weakSelf serverLog:@"No result returned by requesting server address"];
+                          } else if (!_serverAddress) {
+                              _serverAddress = ((NSDictionary *)((NSArray *)responseDict[@"results"])[0])[@"address"];
+                              [weakSelf serverLog:[NSString stringWithFormat:@"Use address: %@", _serverAddress]];
+                              [weakSelf stopBrowsing];
+                          }
+                      }
+                  }];
+    [task resume];
+}
+
 - (void)sendData:(NSData * _Nonnull)requestData
  withHeaderField:(NSDictionary * _Nullable)headerField
        operation:(PEAServerOperation)operation

@@ -11,6 +11,9 @@
 #import "DMXError.h"
 #import "LocalDetector.h"
 
+static const float kDetectionTimeIntervalThreshold = 0.5f;
+static const float kTrackingConfidenceThreshold = 0.8f;
+
 @interface LocalDetector() {
     VNDetectFaceRectanglesRequest *_faceDetection;
     VNDetectFaceLandmarksRequest  *_faceLandmarksDetection;
@@ -21,6 +24,7 @@
     VNSequenceRequestHandler *_faceTrackingRequest;
     LocalDetectorDidFindFaceCallback _didFindFaceCallback;
     FaceLandmarksDetectionResultHandler _resultHandler;
+    NSTimeInterval _timestamp;
     BOOL _tracking;
 }
 
@@ -34,6 +38,7 @@
         _faceLandmarksDetection = [[VNDetectFaceLandmarksRequest alloc] init];
         _faceDetectionRequest = [[VNSequenceRequestHandler alloc] init];
         _faceLandmarksRequest = [[VNSequenceRequestHandler alloc] init];
+        _timestamp = [[NSDate date] timeIntervalSince1970];
         _tracking = NO;
     }
     return self;
@@ -51,12 +56,14 @@
 }
 
 - (void)detectFaceLandmarksInCIImage:(CIImage * _Nonnull)image
-         trackingConfidenceThreshold:(float)threshold
                  didFindFaceCallback:(LocalDetectorDidFindFaceCallback _Nullable)callback
                        resultHandler:(FaceLandmarksDetectionResultHandler _Nullable)handler {
     _didFindFaceCallback = callback;
     _resultHandler = handler;
-    if (_tracking) [self trackFaceInCIImage:image confidenceThreshold:threshold];
+    NSTimeInterval currentTime = [[NSDate date] timeIntervalSince1970];
+    BOOL shouldTrack = _tracking && (currentTime - _timestamp <= kDetectionTimeIntervalThreshold);
+    _timestamp = currentTime;
+    if (shouldTrack) [self trackFaceInCIImage:image confidenceThreshold:kTrackingConfidenceThreshold];
     else [self detectFaceInCIImage:image];
 }
 

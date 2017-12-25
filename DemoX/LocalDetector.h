@@ -20,7 +20,6 @@ typedef void (^FaceLandmarksDetectionResultHandler)(NSArray * _Nullable points, 
 @interface LocalDetector : NSObject
 
 - (void)detectFaceLandmarksInCIImage:(CIImage * _Nonnull)image
-         trackingConfidenceThreshold:(float)threshold
                  didFindFaceCallback:(LocalDetectorDidFindFaceCallback _Nullable)callback
                        resultHandler:(FaceLandmarksDetectionResultHandler _Nullable)handler;
 

@@ -18,6 +18,7 @@
 		BD492E011F72BD08001612FE /* ViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = BD492E001F72BD08001612FE /* ViewController.m */; };
 		BD5395BB1F892E2E009E7312 /* DMXError.m in Sources */ = {isa = PBXBuildFile; fileRef = BD5395BA1F892E2E009E7312 /* DMXError.m */; };
 		BD5512A11F7F000A00DFB83C /* LocalDetector.m in Sources */ = {isa = PBXBuildFile; fileRef = BD5512A01F7F000A00DFB83C /* LocalDetector.m */; };
+		BD6402D81FF0AE7500A867EF /* VideoLayer.m in Sources */ = {isa = PBXBuildFile; fileRef = BD6402D71FF0AE7500A867EF /* VideoLayer.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -60,6 +61,8 @@
 		BD5395BC1F892E44009E7312 /* DMXError.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DMXError.h; sourceTree = "<group>"; };
 		BD55129F1F7F000A00DFB83C /* LocalDetector.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = LocalDetector.h; sourceTree = "<group>"; };
 		BD5512A01F7F000A00DFB83C /* LocalDetector.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = LocalDetector.m; sourceTree = "<group>"; };
+		BD6402D61FF0AE7500A867EF /* VideoLayer.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = VideoLayer.h; sourceTree = "<group>"; };
+		BD6402D71FF0AE7500A867EF /* VideoLayer.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = VideoLayer.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -114,6 +117,8 @@
 				BD492DCE1F72BCF4001612FE /* AppDelegate.m */,
 				BD492DFF1F72BD08001612FE /* ViewController.h */,
 				BD492E001F72BD08001612FE /* ViewController.m */,
+				BD6402D61FF0AE7500A867EF /* VideoLayer.h */,
+				BD6402D71FF0AE7500A867EF /* VideoLayer.m */,
 				BD55129F1F7F000A00DFB83C /* LocalDetector.h */,
 				BD5512A01F7F000A00DFB83C /* LocalDetector.m */,
 				BD10577E1F79E770003DF7D7 /* PEAServer.h */,
@@ -286,6 +291,7 @@
 				BD492E011F72BD08001612FE /* ViewController.m in Sources */,
 				BD492DDD1F72BCF4001612FE /* main.m in Sources */,
 				BD492DCF1F72BCF4001612FE /* AppDelegate.m in Sources */,
+				BD6402D81FF0AE7500A867EF /* VideoLayer.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
