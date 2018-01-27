@@ -28,7 +28,8 @@ static const float kLandmarksDotsRadius = 6.0f;
     UIImage *_selectedPhoto;
     NSString *_photoTimestamp;
     CIImage *_lastFrame;
-    CGRect *_faceBoundingBox;
+    CGRect _faceBoundingBox;
+    BOOL _foundFace;
 }
 
 @property (weak, nonatomic) IBOutlet UIButton *selectPhotoButton;
@@ -133,7 +134,7 @@ static const float kLandmarksDotsRadius = 6.0f;
 }
 
 - (BOOL)shouldPerformSegueWithIdentifier:(NSString *)identifier sender:(id)sender {
-    if (!_selectedPhoto || !_faceBoundingBox) {
+    if (!_selectedPhoto || !_foundFace) {
         [self presentError:!_selectedPhoto ? @"Please select a photo" : @"No face found yet"];
         return NO;
     } else return YES;
@@ -143,7 +144,7 @@ static const float kLandmarksDotsRadius = 6.0f;
     [_videoLayer stop];
 
     // the face part should be cropped down and mirrored
-    CIImage *faceImage = [_lastFrame imageByCroppingToRect:[self scaleRect:*_faceBoundingBox
+    CIImage *faceImage = [_lastFrame imageByCroppingToRect:[self scaleRect:_faceBoundingBox
                                                                     toSize:_lastFrame.extent.size]];
     CIImage *faceImageMirrored = [faceImage imageByApplyingTransform:CGAffineTransformMakeScale(-1, 1)];
 
@@ -153,8 +154,7 @@ static const float kLandmarksDotsRadius = 6.0f;
     CGImageRef cgImage = [context createCGImage:faceImageMirrored
                                        fromRect:faceImageMirrored.extent];
 
-    UINavigationController *nvc = segue.destinationViewController;
-    SelectViewController *svc = nvc.viewControllers[0];
+    SelectViewController *svc = segue.destinationViewController;
     svc.server = _server;
     svc.selfie = [UIImage imageWithCGImage:cgImage];
     svc.photoTimestamp = _photoTimestamp;
@@ -206,9 +206,10 @@ didFinishPickingMediaWithInfo:(NSDictionary<NSString *,id> *)info {
                         didFindFaceCallback:^(LDRFaceDetectionEvent event, CGRect faceBoundingBox) {
                             if (event == LDRFaceNotFound) {
                                 [weakSelf clearShapeLayer];
-                                _faceBoundingBox = nil;
+                                _foundFace = NO;
                             } else {
-                                _faceBoundingBox = &faceBoundingBox;
+                                _foundFace = YES;
+                                _faceBoundingBox = faceBoundingBox;
                                 if (event == LDRFaceFoundByDetection) {
                                     dispatch_async(dispatch_get_main_queue(), ^{
                                         [weakSelf drawRectangle:[weakSelf scaleRect:faceBoundingBox toSize:_viewBoundsSize]];

@@ -16,8 +16,8 @@
     UIActivityIndicatorView *_transferIndicator;
     NSMutableArray<UIImage *> *_portraits;
     NSMutableArray<UIImage *> *_paintings;
-    NSMutableArray<NSString *> *_paintingsId;
-    NSMutableArray<NSString *> *_paintingsTitle;
+    NSMutableArray<NSNumber *> *_paintingsId;
+    UIImage *_stylizedImage;
 }
 
 @property (weak, nonatomic) IBOutlet UIImageView *paintingView;
@@ -42,10 +42,18 @@
     _transferIndicator.center = CGPointMake(self.view.center.x, self.view.center.y);
     _transferIndicator.hidesWhenStopped = YES;
     
+    [_paintingView setContentMode:UIViewContentModeScaleAspectFit];
+    self.view.backgroundColor = UIColor.blackColor;
+    
     _portraits = [NSMutableArray arrayWithCapacity:3];
     _paintings = [NSMutableArray arrayWithCapacity:3];
     _paintingsId = [NSMutableArray arrayWithCapacity:3];
-    _paintingsTitle = [NSMutableArray arrayWithCapacity:3];
+    
+    UIBarButtonItem *rightBarItem = [[UIBarButtonItem alloc] initWithTitle:@"Use It!"
+                                                                     style:UIBarButtonItemStylePlain
+                                                                    target:self
+                                                                    action:@selector(pushStylized)];
+    self.navigationItem.rightBarButtonItem = rightBarItem;
     
     [self retrievePainting];
 }
@@ -74,13 +82,10 @@
                   [weakSelf viewControllerLog:@"Retrieved images"];
                   NSData *data = response[@"data"];
                   NSUInteger offset = 0;
-                  for (NSDictionary *info in response) {
-                      NSUInteger portraitDataLength = ((NSNumber *)info[@"Portrait-Length"]).unsignedIntegerValue;
-                      NSData *portraitData = [NSData dataWithBytesNoCopy:(char *)data.bytes + offset
-                                                                  length:portraitDataLength
-                                                            freeWhenDone:NO];
-                      [_portraits addObject:[UIImage imageWithData:portraitData]];
-                      offset += portraitDataLength;
+                  
+                  NSArray *infoArray = [NSJSONSerialization JSONObjectWithData:[response[@"info"] dataUsingEncoding:NSUTF8StringEncoding] options:kNilOptions error:nil];
+                  for (NSDictionary *info in infoArray) {
+                      [_paintingsId addObject:info[@"Painting-Id"]];
                       
                       NSUInteger paintingDataLength = ((NSNumber *)info[@"Painting-Length"]).unsignedIntegerValue;
                       NSData *paintingData = [NSData dataWithBytesNoCopy:(char *)data.bytes + offset
@@ -89,9 +94,19 @@
                       [_paintings addObject:[UIImage imageWithData:paintingData]];
                       offset += paintingDataLength;
                       
-                      [_paintingsId addObject:info[@"Painting-Id"]];
-                      [_paintingsTitle addObject:info[@"Painting-Title"]];
+                      NSUInteger portraitDataLength = ((NSNumber *)info[@"Portrait-Length"]).unsignedIntegerValue;
+                      NSData *portraitData = [NSData dataWithBytesNoCopy:(char *)data.bytes + offset
+                                                                  length:portraitDataLength
+                                                            freeWhenDone:NO];
+                      [_portraits addObject:[UIImage imageWithData:portraitData]];
+                      offset += portraitDataLength;
                   }
+                  
+                  _portraitView0.image = _portraits[0];
+                  _portraitView1.image = _portraits[1];
+                  _portraitView2.image = _portraits[2];
+                  _paintingView.image = _paintings[0];
+                  _selectedPainting = 0;
               } else {
                   [weakSelf presentError:@"No data received"];
               }
@@ -120,22 +135,24 @@
     }
 }
 
-- (void)prepareForSegue:(UIStoryboardSegue *)segue sender:(id)sender {
+- (void)pushStylized {
     [self onProcessingAnimation];
-    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
     __weak typeof(self) weakSelf = self;
     [_server sendData:[NSData data]
-     withHeaderFields:@{@"Timestamp": _photoTimestamp}
+     withHeaderFields:@{@"Photo-Timestamp": _photoTimestamp,
+                        @"Style-Id": _paintingsId[_selectedPainting].stringValue}
             operation:PEAServerTransfer
               timeout:300
       responseHandler:^(NSDictionary * _Nullable response, NSError * _Nullable error) {
           [weakSelf endProcessingAnimationWithBlock:^{
-              StylizedViewController *svc = ((UINavigationController *)segue.destinationViewController).viewControllers[0];
-              svc.stylizedImage = [UIImage imageWithData:response[@"data"]];
-              dispatch_semaphore_signal(semaphore);
+              _stylizedImage = [UIImage imageWithData:response[@"data"]];
+              [weakSelf performSegueWithIdentifier:@"ShowStylized" sender:self];
           }];
       }];
-    dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
+}
+
+- (void)prepareForSegue:(UIStoryboardSegue *)segue sender:(id)sender {
+    ((StylizedViewController *)segue.destinationViewController).stylizedImage = _stylizedImage;
 }
 
 - (void)onProcessingAnimation {

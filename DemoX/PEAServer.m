@@ -221,7 +221,6 @@ withHeaderFields:(NSDictionary * _Nullable)headerFields
                                 if (operation == PEAServerRetrieve) {
                                     NSDictionary *headers = ((NSHTTPURLResponse *)response).allHeaderFields;
                                     NSDictionary *responseDict = @{@"data": data,
-                                                                   @"length": headers[@"Content-Length"],
                                                                    @"info": headers[@"Image-Info"],
                                                                    };
                                     responseHandler(responseDict, nil);

@@ -11,7 +11,6 @@
 @interface StylizedViewController ()
 
 @property (weak, nonatomic) IBOutlet UIImageView *imageView;
-- (IBAction)tapShare:(id)sender;
 
 @end
 
@@ -21,6 +20,14 @@
     [super viewDidLoad];
     
     _imageView.image = _stylizedImage;
+    [_imageView setContentMode:UIViewContentModeScaleAspectFit];
+    self.view.backgroundColor = UIColor.blackColor;
+    
+    UIBarButtonItem *rightBarItem = [[UIBarButtonItem alloc] initWithTitle:@"Share..."
+                                                                     style:UIBarButtonItemStylePlain
+                                                                    target:self
+                                                                    action:@selector(tapShare)];
+    self.navigationItem.rightBarButtonItem = rightBarItem;
 }
 
 - (void)didReceiveMemoryWarning {
@@ -28,7 +35,7 @@
     // Dispose of any resources that can be recreated.
 }
 
-- (IBAction)tapShare:(id)sender {
+- (void)tapShare {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:nil
                                                                    message:nil
                                                             preferredStyle:UIAlertControllerStyleAlert];
