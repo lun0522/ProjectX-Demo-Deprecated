@@ -21,6 +21,5 @@
 - (void)start;
 - (void)stop;
 - (void)switchCamera;
-- (AVCaptureDevicePosition)getCameraPosition;
 
 @end

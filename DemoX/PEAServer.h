@@ -13,13 +13,14 @@ typedef void (^PEAServerResponseHandler)(NSDictionary * _Nullable response, NSEr
 typedef NS_ENUM(NSUInteger, PEAServerOperation) {
     PEAServerStore = 1101,
     PEAServerDelete,
+    PEAServerRetrieve,
     PEAServerTransfer,
 };
 
 @interface PEAServer : NSObject
 
 - (void)sendData:(NSData * _Nonnull)requestData
- withHeaderField:(NSDictionary * _Nullable)headerField
+withHeaderFields:(NSDictionary * _Nullable)headerFields
        operation:(PEAServerOperation)operation
          timeout:(NSTimeInterval)timeout
  responseHandler:(PEAServerResponseHandler _Nonnull)responseHandler;

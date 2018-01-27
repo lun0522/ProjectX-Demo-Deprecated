@@ -1,5 +1,5 @@
 //
-//  ViewController.h
+//  CaptureViewController.h
 //  DemoX
 //
 //  Created by Lun on 2017/9/19.
@@ -8,6 +8,6 @@
 
 #import <UIKit/UIKit.h>
 
-@interface ViewController : UIViewController
+@interface CaptureViewController : UIViewController
 
 @end

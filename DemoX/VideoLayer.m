@@ -56,7 +56,6 @@
         if ([_session canAddOutput:videoOutput]) [_session addOutput:videoOutput];
         
         [_session commitConfiguration];
-        [_session startRunning];
     }
     @catch (NSException *exception) {
         [self videoLayerLog:@"Session setup failed!"];
@@ -113,10 +112,6 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
     } else {
         [self videoLayerLog:@"No session!"];
     }
-}
-
-- (AVCaptureDevicePosition)getCameraPosition {
-    return _currentCameraPosition;
 }
 
 - (AVCaptureDevice *)cameraWithPreviousPosition:(const AVCaptureDevicePosition)previousPosition {

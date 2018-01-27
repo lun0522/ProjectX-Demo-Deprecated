@@ -1,18 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="13529" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" useTraitCollections="YES" useSafeAreas="YES" colorMatched="YES" initialViewController="vOA-EC-7E8">
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="13771" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" useTraitCollections="YES" useSafeAreas="YES" colorMatched="YES" initialViewController="2Z6-7r-Hga">
     <device id="retina4_7" orientation="portrait">
         <adaptation id="fullscreen"/>
     </device>
     <dependencies>
-        <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="13527"/>
+        <deployment identifier="iOS"/>
+        <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="13772"/>
         <capability name="Safe area layout guides" minToolsVersion="9.0"/>
         <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
     </dependencies>
     <scenes>
-        <!--View Controller-->
+        <!--Capture View Controller-->
         <scene sceneID="qEE-xF-t47">
             <objects>
-                <viewController id="vOA-EC-7E8" customClass="ViewController" sceneMemberID="viewController">
+                <viewController id="vOA-EC-7E8" customClass="CaptureViewController" sceneMemberID="viewController">
                     <view key="view" contentMode="scaleToFill" id="6q7-CL-KYd">
                         <rect key="frame" x="0.0" y="0.0" width="375" height="667"/>
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
@@ -28,6 +29,9 @@
                                 <autoresizingMask key="autoresizingMask" flexibleMinX="YES" widthSizable="YES" flexibleMaxX="YES" flexibleMinY="YES"/>
                                 <fontDescription key="fontDescription" type="system" pointSize="18"/>
                                 <state key="normal" title="Capture Face"/>
+                                <connections>
+                                    <segue destination="da8-i8-qEd" kind="show" id="sbP-qs-YTJ"/>
+                                </connections>
                             </button>
                             <button opaque="NO" contentMode="scaleToFill" fixedFrame="YES" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="roundedRect" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="T2V-mH-9f8">
                                 <rect key="frame" x="120" y="434" width="135" height="40"/>
@@ -39,6 +43,7 @@
                         <color key="backgroundColor" red="1" green="1" blue="1" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
                         <viewLayoutGuide key="safeArea" id="NGY-7w-Ac5"/>
                     </view>
+                    <navigationItem key="navigationItem" id="vyS-50-Haf"/>
                     <connections>
                         <outlet property="captureFaceButton" destination="hwD-Gd-Wsd" id="JiN-mw-QZn"/>
                         <outlet property="selectPhotoButton" destination="T2V-mH-9f8" id="Sdh-PF-yFj"/>
@@ -47,7 +52,147 @@
                 </viewController>
                 <placeholder placeholderIdentifier="IBFirstResponder" id="hQL-29-bnS" sceneMemberID="firstResponder"/>
             </objects>
-            <point key="canvasLocation" x="925.60000000000002" y="132.68365817091455"/>
+            <point key="canvasLocation" x="1650" y="836"/>
+        </scene>
+        <!--Select View Controller-->
+        <scene sceneID="jgQ-0D-FR7">
+            <objects>
+                <viewController id="da8-i8-qEd" customClass="SelectViewController" sceneMemberID="viewController">
+                    <view key="view" contentMode="scaleToFill" id="8Wb-ep-61d">
+                        <rect key="frame" x="0.0" y="0.0" width="375" height="667"/>
+                        <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
+                        <subviews>
+                            <imageView userInteractionEnabled="NO" contentMode="scaleToFill" horizontalHuggingPriority="251" verticalHuggingPriority="251" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="pwU-yv-TcX">
+                                <rect key="frame" x="0.0" y="517" width="125" height="150"/>
+                                <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMaxY="YES"/>
+                                <gestureRecognizers/>
+                                <connections>
+                                    <outletCollection property="gestureRecognizers" destination="shu-Rq-zG7" appends="YES" id="Vui-Am-Jj6"/>
+                                </connections>
+                            </imageView>
+                            <imageView userInteractionEnabled="NO" contentMode="scaleToFill" horizontalHuggingPriority="251" verticalHuggingPriority="251" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="8Wd-om-RAk">
+                                <rect key="frame" x="125" y="517" width="125" height="150"/>
+                                <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMaxY="YES"/>
+                                <gestureRecognizers/>
+                                <connections>
+                                    <outletCollection property="gestureRecognizers" destination="NRs-pi-fRz" appends="YES" id="3y9-we-qqQ"/>
+                                </connections>
+                            </imageView>
+                            <imageView userInteractionEnabled="NO" contentMode="scaleToFill" horizontalHuggingPriority="251" verticalHuggingPriority="251" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="7oe-qD-HX1">
+                                <rect key="frame" x="250" y="517" width="125" height="150"/>
+                                <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMaxY="YES"/>
+                                <gestureRecognizers/>
+                                <connections>
+                                    <outletCollection property="gestureRecognizers" destination="RWF-pv-O2u" appends="YES" id="Omf-9R-UTj"/>
+                                </connections>
+                            </imageView>
+                            <imageView userInteractionEnabled="NO" contentMode="scaleToFill" horizontalHuggingPriority="251" verticalHuggingPriority="251" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="TqG-6b-iS0">
+                                <rect key="frame" x="0.0" y="64" width="375" height="453"/>
+                                <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMaxY="YES"/>
+                            </imageView>
+                        </subviews>
+                        <color key="backgroundColor" white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
+                        <viewLayoutGuide key="safeArea" id="a2E-sy-RrV"/>
+                    </view>
+                    <navigationItem key="navigationItem" id="SRE-70-wmi">
+                        <barButtonItem key="rightBarButtonItem" id="hOO-hl-tj3">
+                            <button key="customView" opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="roundedRect" lineBreakMode="middleTruncation" id="7h5-eU-204">
+                                <rect key="frame" x="276" y="5" width="83" height="34"/>
+                                <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMaxY="YES"/>
+                                <fontDescription key="fontDescription" name=".AppleSystemUIFont" family=".AppleSystemUIFont" pointSize="18"/>
+                                <state key="normal" title="Use it!">
+                                    <attributedString key="attributedTitle">
+                                        <fragment content="Use it!">
+                                            <attributes>
+                                                <font key="NSFont" metaFont="system" size="18"/>
+                                            </attributes>
+                                        </fragment>
+                                    </attributedString>
+                                </state>
+                            </button>
+                            <connections>
+                                <segue destination="kq3-AO-pQi" kind="show" id="BfB-cd-p2O"/>
+                            </connections>
+                        </barButtonItem>
+                    </navigationItem>
+                    <connections>
+                        <outlet property="paintingView" destination="TqG-6b-iS0" id="NV1-gI-qBp"/>
+                        <outlet property="portraitView0" destination="pwU-yv-TcX" id="qXy-V9-6hM"/>
+                        <outlet property="portraitView1" destination="8Wd-om-RAk" id="L7R-A3-Iw6"/>
+                        <outlet property="portraitView2" destination="7oe-qD-HX1" id="lmo-PB-8Xm"/>
+                    </connections>
+                </viewController>
+                <placeholder placeholderIdentifier="IBFirstResponder" id="oce-ta-djC" userLabel="First Responder" sceneMemberID="firstResponder"/>
+                <tapGestureRecognizer id="shu-Rq-zG7">
+                    <connections>
+                        <action selector="tapPortrait0:" destination="da8-i8-qEd" id="f8j-Rd-puC"/>
+                    </connections>
+                </tapGestureRecognizer>
+                <tapGestureRecognizer id="NRs-pi-fRz">
+                    <connections>
+                        <action selector="tapPortrait1:" destination="da8-i8-qEd" id="Uuh-JS-GcO"/>
+                    </connections>
+                </tapGestureRecognizer>
+                <tapGestureRecognizer id="RWF-pv-O2u">
+                    <connections>
+                        <action selector="tapPortrait2:" destination="da8-i8-qEd" id="32g-vP-PA2"/>
+                    </connections>
+                </tapGestureRecognizer>
+            </objects>
+            <point key="canvasLocation" x="2376.8000000000002" y="834.33283358320841"/>
+        </scene>
+        <!--Stylized View Controller-->
+        <scene sceneID="xgl-fq-1h1">
+            <objects>
+                <viewController id="kq3-AO-pQi" customClass="StylizedViewController" sceneMemberID="viewController">
+                    <view key="view" contentMode="scaleToFill" id="MhJ-7h-7MY">
+                        <rect key="frame" x="0.0" y="0.0" width="375" height="667"/>
+                        <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
+                        <subviews>
+                            <imageView userInteractionEnabled="NO" contentMode="scaleToFill" horizontalHuggingPriority="251" verticalHuggingPriority="251" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="tf4-iw-ftI">
+                                <rect key="frame" x="0.0" y="64" width="375" height="603"/>
+                                <autoresizingMask key="autoresizingMask" flexibleMinX="YES" widthSizable="YES" flexibleMaxX="YES" flexibleMinY="YES" heightSizable="YES" flexibleMaxY="YES"/>
+                            </imageView>
+                        </subviews>
+                        <color key="backgroundColor" white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
+                        <viewLayoutGuide key="safeArea" id="CPR-Cu-eiM"/>
+                    </view>
+                    <navigationItem key="navigationItem" id="Zpt-Db-bV9">
+                        <barButtonItem key="rightBarButtonItem" style="plain" id="Czl-q7-cfN">
+                            <button key="customView" opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="roundedRect" lineBreakMode="middleTruncation" id="t9W-BR-OOx">
+                                <rect key="frame" x="276" y="5" width="83" height="34"/>
+                                <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMaxY="YES"/>
+                                <fontDescription key="fontDescription" type="system" pointSize="18"/>
+                                <state key="normal" title="Share..."/>
+                            </button>
+                            <connections>
+                                <action selector="tapShare:" destination="kq3-AO-pQi" id="Oon-y5-bLK"/>
+                            </connections>
+                        </barButtonItem>
+                    </navigationItem>
+                    <connections>
+                        <outlet property="imageView" destination="tf4-iw-ftI" id="eFh-Ul-1vi"/>
+                    </connections>
+                </viewController>
+                <placeholder placeholderIdentifier="IBFirstResponder" id="z9x-NB-E3I" userLabel="First Responder" sceneMemberID="firstResponder"/>
+            </objects>
+            <point key="canvasLocation" x="3101.5999999999999" y="833.43328335832086"/>
+        </scene>
+        <!--Navigation Controller-->
+        <scene sceneID="fJU-EW-Byz">
+            <objects>
+                <navigationController id="2Z6-7r-Hga" sceneMemberID="viewController">
+                    <navigationBar key="navigationBar" contentMode="scaleToFill" insetsLayoutMarginsFromSafeArea="NO" id="URJ-6t-sKI">
+                        <rect key="frame" x="0.0" y="20" width="375" height="44"/>
+                        <autoresizingMask key="autoresizingMask"/>
+                    </navigationBar>
+                    <connections>
+                        <segue destination="vOA-EC-7E8" kind="relationship" relationship="rootViewController" id="N6u-Bq-F47"/>
+                    </connections>
+                </navigationController>
+                <placeholder placeholderIdentifier="IBFirstResponder" id="L5O-yl-wUl" userLabel="First Responder" sceneMemberID="firstResponder"/>
+            </objects>
+            <point key="canvasLocation" x="912" y="837"/>
         </scene>
     </scenes>
 </document>

@@ -34,9 +34,10 @@ static NSDictionary *kServerOperationDict = nil;
         kServerOperationDict = @{
                                  @(PEAServerStore)   : @"Store",
                                  @(PEAServerDelete)  : @"Delete",
+                                 @(PEAServerRetrieve): @"Retrieve",
                                  @(PEAServerTransfer): @"Transfer",
                                  };
-//        [self searchServerInLAN];
+        [self searchServerInLAN];
         [self requestServerAddress];
     }
     return self;
@@ -133,7 +134,7 @@ static NSDictionary *kServerOperationDict = nil;
 #pragma mark - HTTP requests
 
 - (void)requestServerAddress {
-    __weak PEAServer *weakSelf = self;
+    __weak typeof(self) weakSelf = self;
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:kLeanCloudUrl.copy]
                                                            cachePolicy:NSURLRequestReloadIgnoringCacheData
                                                        timeoutInterval:10];
@@ -177,7 +178,7 @@ static NSDictionary *kServerOperationDict = nil;
 }
 
 - (void)sendData:(NSData * _Nonnull)requestData
- withHeaderField:(NSDictionary * _Nullable)headerField
+withHeaderFields:(NSDictionary * _Nullable)headerFields
        operation:(PEAServerOperation)operation
          timeout:(NSTimeInterval)timeout
  responseHandler:(PEAServerResponseHandler _Nonnull)responseHandler {
@@ -194,8 +195,8 @@ static NSDictionary *kServerOperationDict = nil;
     [request setValue:kServerOperationDict[@(operation)] forHTTPHeaderField:@"Operation"];
     [request setValue:kClientAuthenticationString.copy forHTTPHeaderField:@"Authentication"];
     [request setValue:[NSString stringWithFormat:@"%ld", requestData.length] forHTTPHeaderField:@"Content-Length"];
-    if (headerField)
-        [headerField enumerateKeysAndObjectsUsingBlock:^(NSString * _Nonnull field,
+    if (headerFields)
+        [headerFields enumerateKeysAndObjectsUsingBlock:^(NSString * _Nonnull field,
                                                          NSString * _Nonnull value,
                                                          BOOL * _Nonnull stop) {
             [request setValue:value forHTTPHeaderField:field];
@@ -217,32 +218,28 @@ static NSDictionary *kServerOperationDict = nil;
                                 responseHandler(nil, [self sendDataErrorWithDescription:
                                                       [NSString stringWithFormat:@"Error in sending data: status code %ld", statusCode]]);
                             } else {
-                                NSString *contentType = ((NSHTTPURLResponse *)response).allHeaderFields[@"Content-Type"];
-                                if (contentType) {
-                                    if ([contentType isEqualToString:@"application/json"]) {
-                                        NSError *jsonError;
-                                        NSDictionary *responseDict = data.length?
-                                        [NSJSONSerialization JSONObjectWithData:data
-                                                                        options:kNilOptions
-                                                                          error:&jsonError]: nil;
-                                        
-                                        if (jsonError) responseHandler(nil, [self sendDataErrorWithDescription:
-                                                                             [NSString stringWithFormat:
-                                                                              @"Failed converting JSON to dictionary: %@",
-                                                                              jsonError.localizedDescription]]);
-                                        else responseHandler(responseDict, nil);
-                                    } else if ([contentType isEqualToString:@"application/octet-stream"]) {
-                                        NSDictionary *responseHeaderFields = ((NSHTTPURLResponse *)response).allHeaderFields;
-                                        NSDictionary *responseDict = data.length? @{@"binaryData": data,
-                                                                                    @"url": responseHeaderFields[@"Image-URL"],
-                                                                                    @"title": responseHeaderFields[@"Image-Title"],
-                                                                                    }: nil;
-                                        responseHandler(responseDict, nil);
-                                    } else {
-                                        responseHandler(nil, [self sendDataErrorWithDescription:@"Unknown content type"]);
-                                    }
+                                if (operation == PEAServerRetrieve) {
+                                    NSDictionary *headers = ((NSHTTPURLResponse *)response).allHeaderFields;
+                                    NSDictionary *responseDict = @{@"data": data,
+                                                                   @"length": headers[@"Content-Length"],
+                                                                   @"info": headers[@"Image-Info"],
+                                                                   };
+                                    responseHandler(responseDict, nil);
+                                } else if (operation == PEAServerTransfer) {
+                                    NSDictionary *responseDict = @{@"data": data};
+                                    responseHandler(responseDict, nil);
                                 } else {
-                                    responseHandler(nil, [self sendDataErrorWithDescription:@"Content type not specified"]);
+                                    NSError *jsonError;
+                                    NSDictionary *responseDict = data.length?
+                                    [NSJSONSerialization JSONObjectWithData:data
+                                                                    options:kNilOptions
+                                                                      error:&jsonError]: nil;
+                                    
+                                    if (jsonError) responseHandler(nil, [self sendDataErrorWithDescription:
+                                                                         [NSString stringWithFormat:
+                                                                          @"Failed converting JSON to dictionary: %@",
+                                                                          jsonError.localizedDescription]]);
+                                    else responseHandler(responseDict, nil);
                                 }
                             }
                         }

@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		BD10577F1F79E771003DF7D7 /* PEAServer.m in Sources */ = {isa = PBXBuildFile; fileRef = BD10577D1F79E770003DF7D7 /* PEAServer.m */; };
+		BD3D0185201B9FD300A90492 /* SelectViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = BD3D0184201B9FD300A90492 /* SelectViewController.m */; };
+		BD3D0188201BA02200A90492 /* StylizedViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = BD3D0187201BA02200A90492 /* StylizedViewController.m */; };
 		BD492DCF1F72BCF4001612FE /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = BD492DCE1F72BCF4001612FE /* AppDelegate.m */; };
 		BD492DD51F72BCF4001612FE /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = BD492DD31F72BCF4001612FE /* Main.storyboard */; };
 		BD492DD71F72BCF4001612FE /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BD492DD61F72BCF4001612FE /* Assets.xcassets */; };
@@ -15,7 +17,7 @@
 		BD492DDD1F72BCF4001612FE /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = BD492DDC1F72BCF4001612FE /* main.m */; };
 		BD492DE71F72BCF4001612FE /* DemoXTests.m in Sources */ = {isa = PBXBuildFile; fileRef = BD492DE61F72BCF4001612FE /* DemoXTests.m */; };
 		BD492DF21F72BCF4001612FE /* DemoXUITests.m in Sources */ = {isa = PBXBuildFile; fileRef = BD492DF11F72BCF4001612FE /* DemoXUITests.m */; };
-		BD492E011F72BD08001612FE /* ViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = BD492E001F72BD08001612FE /* ViewController.m */; };
+		BD492E011F72BD08001612FE /* CaptureViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = BD492E001F72BD08001612FE /* CaptureViewController.m */; };
 		BD5395BB1F892E2E009E7312 /* DMXError.m in Sources */ = {isa = PBXBuildFile; fileRef = BD5395BA1F892E2E009E7312 /* DMXError.m */; };
 		BD5512A11F7F000A00DFB83C /* LocalDetector.m in Sources */ = {isa = PBXBuildFile; fileRef = BD5512A01F7F000A00DFB83C /* LocalDetector.m */; };
 		BD6402D81FF0AE7500A867EF /* VideoLayer.m in Sources */ = {isa = PBXBuildFile; fileRef = BD6402D71FF0AE7500A867EF /* VideoLayer.m */; };
@@ -41,6 +43,10 @@
 /* Begin PBXFileReference section */
 		BD10577D1F79E770003DF7D7 /* PEAServer.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PEAServer.m; sourceTree = "<group>"; };
 		BD10577E1F79E770003DF7D7 /* PEAServer.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PEAServer.h; sourceTree = "<group>"; };
+		BD3D0183201B9FD300A90492 /* SelectViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SelectViewController.h; sourceTree = "<group>"; };
+		BD3D0184201B9FD300A90492 /* SelectViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SelectViewController.m; sourceTree = "<group>"; };
+		BD3D0186201BA02200A90492 /* StylizedViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = StylizedViewController.h; sourceTree = "<group>"; };
+		BD3D0187201BA02200A90492 /* StylizedViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = StylizedViewController.m; sourceTree = "<group>"; };
 		BD492DCA1F72BCF4001612FE /* DemoX.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DemoX.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BD492DCD1F72BCF4001612FE /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
 		BD492DCE1F72BCF4001612FE /* AppDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppDelegate.m; sourceTree = "<group>"; };
@@ -55,8 +61,8 @@
 		BD492DED1F72BCF4001612FE /* DemoXUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DemoXUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		BD492DF11F72BCF4001612FE /* DemoXUITests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = DemoXUITests.m; sourceTree = "<group>"; };
 		BD492DF31F72BCF4001612FE /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		BD492DFF1F72BD08001612FE /* ViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ViewController.h; sourceTree = "<group>"; };
-		BD492E001F72BD08001612FE /* ViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ViewController.m; sourceTree = "<group>"; };
+		BD492DFF1F72BD08001612FE /* CaptureViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CaptureViewController.h; sourceTree = "<group>"; };
+		BD492E001F72BD08001612FE /* CaptureViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CaptureViewController.m; sourceTree = "<group>"; };
 		BD5395BA1F892E2E009E7312 /* DMXError.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = DMXError.m; sourceTree = "<group>"; };
 		BD5395BC1F892E44009E7312 /* DMXError.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DMXError.h; sourceTree = "<group>"; };
 		BD55129F1F7F000A00DFB83C /* LocalDetector.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = LocalDetector.h; sourceTree = "<group>"; };
@@ -115,8 +121,12 @@
 			children = (
 				BD492DCD1F72BCF4001612FE /* AppDelegate.h */,
 				BD492DCE1F72BCF4001612FE /* AppDelegate.m */,
-				BD492DFF1F72BD08001612FE /* ViewController.h */,
-				BD492E001F72BD08001612FE /* ViewController.m */,
+				BD492DFF1F72BD08001612FE /* CaptureViewController.h */,
+				BD492E001F72BD08001612FE /* CaptureViewController.m */,
+				BD3D0183201B9FD300A90492 /* SelectViewController.h */,
+				BD3D0184201B9FD300A90492 /* SelectViewController.m */,
+				BD3D0186201BA02200A90492 /* StylizedViewController.h */,
+				BD3D0187201BA02200A90492 /* StylizedViewController.m */,
 				BD6402D61FF0AE7500A867EF /* VideoLayer.h */,
 				BD6402D71FF0AE7500A867EF /* VideoLayer.m */,
 				BD55129F1F7F000A00DFB83C /* LocalDetector.h */,
@@ -285,10 +295,12 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BD3D0188201BA02200A90492 /* StylizedViewController.m in Sources */,
+				BD3D0185201B9FD300A90492 /* SelectViewController.m in Sources */,
 				BD5395BB1F892E2E009E7312 /* DMXError.m in Sources */,
 				BD5512A11F7F000A00DFB83C /* LocalDetector.m in Sources */,
 				BD10577F1F79E771003DF7D7 /* PEAServer.m in Sources */,
-				BD492E011F72BD08001612FE /* ViewController.m in Sources */,
+				BD492E011F72BD08001612FE /* CaptureViewController.m in Sources */,
 				BD492DDD1F72BCF4001612FE /* main.m in Sources */,
 				BD492DCF1F72BCF4001612FE /* AppDelegate.m in Sources */,
 				BD6402D81FF0AE7500A867EF /* VideoLayer.m in Sources */,
