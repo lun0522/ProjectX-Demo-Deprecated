@@ -17,7 +17,7 @@
     NSMutableArray<UIImage *> *_portraits;
     NSMutableArray<UIImage *> *_paintings;
     NSMutableArray<NSNumber *> *_paintingsId;
-    UIImage *_stylizedImage;
+    NSMutableArray<UIImage *> *_stylizedImages;
 }
 
 @property (weak, nonatomic) IBOutlet UIImageView *paintingView;
@@ -48,11 +48,15 @@
     _portraits = [NSMutableArray arrayWithCapacity:3];
     _paintings = [NSMutableArray arrayWithCapacity:3];
     _paintingsId = [NSMutableArray arrayWithCapacity:3];
+    _stylizedImages = [NSMutableArray arrayWithObjects:[NSNull null], [NSNull null], [NSNull null], nil];
     
-    UIBarButtonItem *rightBarItem = [[UIBarButtonItem alloc] initWithTitle:@"Use It!"
-                                                                     style:UIBarButtonItemStylePlain
-                                                                    target:self
-                                                                    action:@selector(pushStylized)];
+    UIButton *rightBarButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    [rightBarButton setTitle:@"Use it!" forState:UIControlStateNormal];
+    rightBarButton.titleLabel.font = [UIFont systemFontOfSize:18];
+    [rightBarButton addTarget:self
+                       action:@selector(pushStylized)
+             forControlEvents:UIControlEventTouchUpInside];
+    UIBarButtonItem *rightBarItem = [[UIBarButtonItem alloc] initWithCustomView:rightBarButton];
     self.navigationItem.rightBarButtonItem = rightBarItem;
     
     [self retrievePainting];
@@ -136,23 +140,29 @@
 }
 
 - (void)pushStylized {
-    [self onProcessingAnimation];
-    __weak typeof(self) weakSelf = self;
-    [_server sendData:[NSData data]
-     withHeaderFields:@{@"Photo-Timestamp": _photoTimestamp,
-                        @"Style-Id": _paintingsId[_selectedPainting].stringValue}
-            operation:PEAServerTransfer
-              timeout:300
-      responseHandler:^(NSDictionary * _Nullable response, NSError * _Nullable error) {
-          [weakSelf endProcessingAnimationWithBlock:^{
-              _stylizedImage = [UIImage imageWithData:response[@"data"]];
-              [weakSelf performSegueWithIdentifier:@"ShowStylized" sender:self];
+    if ((id)_stylizedImages[_selectedPainting] != [NSNull null]) { // cached
+        [self performSegueWithIdentifier:@"ShowStylized" sender:self];
+    } else {
+        [self onProcessingAnimation];
+        __weak typeof(self) weakSelf = self;
+        [_server sendData:[NSData data]
+         withHeaderFields:@{@"Photo-Timestamp": _photoTimestamp,
+                            @"Style-Id": _paintingsId[_selectedPainting].stringValue}
+                operation:PEAServerTransfer
+                  timeout:300
+          responseHandler:^(NSDictionary * _Nullable response, NSError * _Nullable error) {
+              [weakSelf endProcessingAnimationWithBlock:^{
+                  _stylizedImages[_selectedPainting] = [UIImage imageWithData:response[@"data"]];
+                  [weakSelf performSegueWithIdentifier:@"ShowStylized" sender:self];
+              }];
           }];
-      }];
+    }
 }
 
 - (void)prepareForSegue:(UIStoryboardSegue *)segue sender:(id)sender {
-    ((StylizedViewController *)segue.destinationViewController).stylizedImage = _stylizedImage;
+    StylizedViewController *svc = segue.destinationViewController;
+    svc.originalPhoto = _originalPhoto;
+    svc.stylizedImage = _stylizedImages[_selectedPainting];
 }
 
 - (void)onProcessingAnimation {

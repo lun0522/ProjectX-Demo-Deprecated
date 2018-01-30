@@ -8,7 +8,9 @@
 
 #import "StylizedViewController.h"
 
-@interface StylizedViewController ()
+@interface StylizedViewController () {
+    UILongPressGestureRecognizer *_longPressRecognizer;
+}
 
 @property (weak, nonatomic) IBOutlet UIImageView *imageView;
 
@@ -23,6 +25,11 @@
     [_imageView setContentMode:UIViewContentModeScaleAspectFit];
     self.view.backgroundColor = UIColor.blackColor;
     
+    _longPressRecognizer = [[UILongPressGestureRecognizer alloc] initWithTarget:self
+                                                                         action:@selector(longPress:)];
+    _longPressRecognizer.minimumPressDuration = 0.3f;
+    [_imageView addGestureRecognizer:_longPressRecognizer];
+    
     UIBarButtonItem *rightBarItem = [[UIBarButtonItem alloc] initWithTitle:@"Share..."
                                                                      style:UIBarButtonItemStylePlain
                                                                     target:self
@@ -36,17 +43,31 @@
 }
 
 - (void)tapShare {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:nil
-                                                                   message:nil
-                                                            preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertController *alert =
+    [UIAlertController alertControllerWithTitle:nil
+                                        message:nil
+                                 preferredStyle:UIAlertControllerStyleActionSheet];
     [alert addAction:[UIAlertAction actionWithTitle:@"Save to album"
                                               style:UIAlertActionStyleDefault
                                             handler:^(UIAlertAction * _Nonnull action) {
                                                 UIImageWriteToSavedPhotosAlbum(_stylizedImage, self, @selector(image:didFinishSavingWithError:contextInfo:), nil);
                                             }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Cancel"
+                                              style:UIAlertActionStyleCancel
+                                            handler:nil]];
     dispatch_async(dispatch_get_main_queue(), ^{
         [self presentViewController:alert animated:YES completion:nil];
     });
+}
+
+- (void)longPress:(UILongPressGestureRecognizer *)recognizer {
+    if (recognizer == _longPressRecognizer) {
+        if (recognizer.state == UIGestureRecognizerStateBegan) {
+            _imageView.image = _originalPhoto;
+        } else if (recognizer.state == UIGestureRecognizerStateEnded) {
+            _imageView.image = _stylizedImage;
+        }
+    }
 }
 
 - (void)image:(UIImage *)image

@@ -10,6 +10,7 @@
 
 @interface StylizedViewController : UIViewController
 
+@property (strong, nonatomic) UIImage *originalPhoto;
 @property (strong, nonatomic) UIImage *stylizedImage;
 
 @end

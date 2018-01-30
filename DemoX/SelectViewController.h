@@ -15,5 +15,6 @@
 @property (strong, nonatomic) PEAServer *server;
 @property (strong, nonatomic) UIImage *selfie;
 @property (copy, nonatomic) NSString *photoTimestamp;
+@property (strong, nonatomic) UIImage *originalPhoto;
 
 @end

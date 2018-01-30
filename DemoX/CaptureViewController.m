@@ -158,6 +158,7 @@ static const float kLandmarksDotsRadius = 6.0f;
     svc.server = _server;
     svc.selfie = [UIImage imageWithCGImage:cgImage];
     svc.photoTimestamp = _photoTimestamp;
+    svc.originalPhoto = _selectedPhoto;
 }
 
 #pragma mark - Image picker
@@ -233,7 +234,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<NSString *,id> *)info {
 - (void)uploadSelectedPhoto {
     __weak typeof(self) weakSelf = self;
     [_server sendData:UIImageJPEGRepresentation(_selectedPhoto, 1.0)
-     withHeaderFields:@{@"Timestamp": _photoTimestamp}
+     withHeaderFields:@{@"Photo-Timestamp": _photoTimestamp}
             operation:PEAServerStore
               timeout:30
       responseHandler:^(NSDictionary * _Nullable response, NSError * _Nullable error) {
@@ -247,7 +248,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<NSString *,id> *)info {
     // so pass an empty NSData here
     __weak typeof(self) weakSelf = self;
     [_server sendData:[[NSData alloc] init]
-     withHeaderFields:@{@"Timestamp": _photoTimestamp}
+     withHeaderFields:@{@"Photo-Timestamp": _photoTimestamp}
             operation:PEAServerDelete
               timeout:10
       responseHandler:^(NSDictionary * _Nullable response, NSError * _Nullable error) {
